@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../models/user_model.dart';
 import '../../models/event_model.dart';
 import '../../models/article_model.dart';
+import '../../models/user_stats_model.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -16,20 +17,22 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   UserModel? _currentUser;
+  UserStats? _userStats;
   late final Box<UserModel> _userBox;
-  int _totalParticipants = 0;
-  int _totalDonations = 0;
+  late final Box<UserStats> _statsBox;
   List<EventModel> _popularEvents = [];
   List<ArticleModel> _articles = [];
 
   @override
   void initState() {
     super.initState();
-    _loadData();
-    _loadCurrentUser();
     _userBox = Hive.box<UserModel>('users');
+    _statsBox = Hive.box<UserStats>('user_stats');
+    
+    _loadCurrentUser();
+    _loadData();
+    
     _userBox.listenable().addListener(() {
-      // Refresh current user when users box changes
       _loadCurrentUser();
       if (mounted) setState(() {});
     });
@@ -41,6 +44,40 @@ class _HomePageState extends State<HomePage> {
       setState(() {
         _currentUser = user;
       });
+      
+      // Load user stats
+      if (user != null) {
+        _loadUserStats(user.id);
+      }
+    }
+  }
+
+  void _loadUserStats(String userId) {
+    try {
+      // Cari stats untuk user ini
+      UserStats? stats;
+      for (var stat in _statsBox.values) {
+        if (stat.userId == userId) {
+          stats = stat;
+          break;
+        }
+      }
+
+      // Jika tidak ada, buat baru
+      if (stats == null) {
+        stats = UserStats(userId: userId);
+        _statsBox.add(stats);
+      }
+
+      if (mounted) {
+        setState(() {
+          _userStats = stats;
+        });
+      }
+
+      print('📊 User Stats: ${stats.totalParticipations} participations, ${stats.totalDonations} donations');
+    } catch (e) {
+      print('❌ Error loading user stats: $e');
     }
   }
 
@@ -48,21 +85,10 @@ class _HomePageState extends State<HomePage> {
     final eventBox = Hive.box<EventModel>('events');
     final articleBox = Hive.box<ArticleModel>('articles');
 
-    int participants = 0;
-    int donations = 0;
-
-    for (var event in eventBox.values) {
-      participants += event.currentVolunteerCount;
-      donations += event.participationFeeIdr * event.currentVolunteerCount;
-    }
-
-
     final events = eventBox.values.toList();
     events.sort((a, b) => b.currentVolunteerCount.compareTo(a.currentVolunteerCount));
 
     setState(() {
-      _totalParticipants = participants;
-      _totalDonations = donations;
       _popularEvents = events.take(3).toList();
       _articles = articleBox.values.toList();
     });
@@ -112,6 +138,7 @@ class _HomePageState extends State<HomePage> {
       body: RefreshIndicator(
         onRefresh: () async {
           _loadData();
+          _loadCurrentUser();
         },
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -184,7 +211,7 @@ class _HomePageState extends State<HomePage> {
 
               const SizedBox(height: 8),
 
-              // Statistik Cards
+              // Statistik Cards - Per User
               Container(
                 color: Colors.white,
                 padding: const EdgeInsets.all(20),
@@ -193,8 +220,8 @@ class _HomePageState extends State<HomePage> {
                     Expanded(
                       child: _buildStatCard(
                         icon: Icons.people,
-                        label: 'Partisipan',
-                        value: _totalParticipants.toString(),
+                        label: 'Partisipasi',
+                        value: (_userStats?.totalParticipations ?? 0).toString(),
                         color: Colors.blue,
                       ),
                     ),
@@ -202,8 +229,8 @@ class _HomePageState extends State<HomePage> {
                     Expanded(
                       child: _buildStatCard(
                         icon: Icons.payments,
-                        label: 'Donasi',
-                        value: _formatCurrency(_totalDonations),
+                        label: 'Donasi Saya',
+                        value: _formatCurrency(_userStats?.totalDonations ?? 0),
                         color: Colors.green,
                         isSmallValue: true,
                       ),
@@ -241,7 +268,6 @@ class _HomePageState extends State<HomePage> {
 
               // Artikel List (Horizontal)
               SizedBox(
-                // increase height slightly to avoid overflow on small devices
                 height: 260,
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
@@ -361,7 +387,6 @@ class _HomePageState extends State<HomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Image
             ClipRRect(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
               child: Image.network(
@@ -443,7 +468,6 @@ class _HomePageState extends State<HomePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Image
           ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
             child: Image.network(
@@ -465,7 +489,6 @@ class _HomePageState extends State<HomePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Category badge
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
@@ -483,7 +506,6 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(height: 8),
                 
-                // Title
                 Text(
                   event.title,
                   style: const TextStyle(
@@ -496,7 +518,6 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(height: 8),
 
-                // Location
                 Row(
                   children: [
                     Icon(Icons.location_on_outlined, size: 16, color: Colors.grey[600]),
@@ -516,7 +537,6 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(height: 8),
 
-                // Volunteers progress
                 Row(
                   children: [
                     Expanded(

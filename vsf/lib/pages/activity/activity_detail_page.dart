@@ -10,7 +10,6 @@ import '../../models/volunteer_registration.dart';
 import '../../widgets/event_map_viewer.dart';
 import '../volunteer/register_volunteer_page.dart';
 import 'event_participants_page.dart';
-import '../../services/notification_service.dart';
 
 class ActivityDetailPage extends StatefulWidget {
   final EventModel event;

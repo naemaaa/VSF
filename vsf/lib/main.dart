@@ -10,10 +10,10 @@ import 'models/event_model.dart';
 import 'models/event_location.dart';
 import 'models/article_model.dart';
 import 'models/volunteer_registration.dart';
+import 'models/user_stats_model.dart';
 
 // Import services
 import 'services/session_service.dart';
-import 'services/location_service.dart';
 
 // Import pages
 import 'pages/auth/login_page.dart';
@@ -45,6 +45,7 @@ void main() async {
 
   // Open Boxes in correct order
   await Hive.openBox<UserModel>('users');
+  await Hive.openBox<UserStats>('user_stats');
   await Hive.openBox<EventModel>('events');
   await Hive.openBox<ArticleModel>('articles');
 

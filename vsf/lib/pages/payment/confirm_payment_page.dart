@@ -3,6 +3,7 @@ import 'package:hive/hive.dart';
 import 'dart:math';
 import '../../models/event_model.dart';
 import '../../models/volunteer_registration.dart';
+import '../../models/user_stats_model.dart';
 import '../../services/notification_service.dart';
 
 class ConfirmPaymentPage extends StatefulWidget {
@@ -56,6 +57,7 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
           );
 
           await registrationBox.add(completedRegistration);
+          print('✅ Registration saved');
           
           // Update event volunteer count
           final eventBox = await Hive.openBox<EventModel>('events');
@@ -70,6 +72,42 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
           final event = eventList.first;
           event.addVolunteer(widget.registration.volunteerId);
           await eventBox.put(event.key, event);
+          print('✅ Event updated with new volunteer');
+
+          // 📊 UPDATE USER STATS
+          try {
+            final statsBox = await Hive.openBox<UserStats>('user_stats');
+            UserStats? userStats;
+            
+            // Cari stats untuk user ini
+            for (var stat in statsBox.values) {
+              if (stat.userId == widget.registration.volunteerId) {
+                userStats = stat;
+                break;
+              }
+            }
+
+            if (userStats == null) {
+              // Buat baru jika belum ada
+              userStats = UserStats(
+                userId: widget.registration.volunteerId,
+                totalParticipations: 1,
+                totalDonations: widget.registration.donationAmount,
+              );
+              await statsBox.add(userStats);
+              print('✅ Created new UserStats: ${widget.registration.volunteerId}');
+              print('   Participations: 1, Donations: ${widget.registration.donationAmount}');
+            } else {
+              // Update stats yang sudah ada
+              userStats.addParticipation(widget.registration.donationAmount);
+              await userStats.save();
+              print('✅ Updated UserStats: ${widget.registration.volunteerId}');
+              print('   Participations: ${userStats.totalParticipations}, Donations: ${userStats.totalDonations}');
+            }
+          } catch (e) {
+            print('⚠️ Error updating UserStats: $e');
+            // Jangan stop flow, continue ke notification
+          }
 
           // 🔔 Show notification
           try {
@@ -87,10 +125,11 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
 
         } catch (e) {
           // Handle database error
+          print('❌ Error: $e');
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Terjadi kesalahan saat menyimpan data. Silakan coba lagi.'),
+              SnackBar(
+                content: Text('Terjadi kesalahan: $e'),
                 backgroundColor: Colors.red,
               ),
             );
@@ -111,11 +150,12 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
 
     } catch (e) {
       // Handle any other errors
+      print('❌ Exception: $e');
       if (mounted) {
         setState(() => _isProcessing = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Terjadi kesalahan. Silakan coba lagi.'),
+          SnackBar(
+            content: Text('Terjadi kesalahan: $e'),
             backgroundColor: Colors.red,
           ),
         );
