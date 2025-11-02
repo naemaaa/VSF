@@ -228,13 +228,55 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
                       const SizedBox(height: 16),
                       Row(
                         children: [
-                          CircleAvatar(
-                            radius: 20,
-                            backgroundColor: Colors.orange[100],
-                            child: const Icon(
-                              Icons.business,
-                              color: Colors.orange,
-                              size: 20,
+                          // Organizer Avatar/Logo
+                          Container(
+                            width: 50,
+                            height: 50,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.orange[100],
+                              border: Border.all(color: Colors.orange[300]!, width: 2),
+                            ),
+                            child: ClipOval(
+                              child: widget.event.organizerImageUrl != null && 
+                                      widget.event.organizerImageUrl!.isNotEmpty
+                                  ? widget.event.organizerImageUrl!.startsWith('http')
+                                      ? Image.network(
+                                          widget.event.organizerImageUrl!,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) {
+                                            return Container(
+                                              color: Colors.orange[100],
+                                              child: Icon(
+                                                Icons.business,
+                                                color: Colors.orange[600],
+                                                size: 24,
+                                              ),
+                                            );
+                                          },
+                                        )
+                                      : Image.file(
+                                          File(widget.event.organizerImageUrl!),
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) {
+                                            return Container(
+                                              color: Colors.orange[100],
+                                              child: Icon(
+                                                Icons.business,
+                                                color: Colors.orange[600],
+                                                size: 24,
+                                              ),
+                                            );
+                                          },
+                                        )
+                                  : Container(
+                                      color: Colors.orange[100],
+                                      child: Icon(
+                                        Icons.business,
+                                        color: Colors.orange[600],
+                                        size: 24,
+                                      ),
+                                    ),
                             ),
                           ),
                           const SizedBox(width: 12),
