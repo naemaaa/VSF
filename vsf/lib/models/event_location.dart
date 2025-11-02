@@ -49,7 +49,12 @@ class EventLocation {
     return '$city, $province';
   }
 
-  // Google Maps URL untuk redirect
+  // Mapbox URL dengan token yang benar
+  String get mapboxUrl {
+    return 'https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/$longitude,$latitude,13,800x600@2x?access_token=REDACTED_MAPBOX_TOKEN';
+  }
+
+  // Google Maps URL sebagai fallback
   String get googleMapsUrl {
     return 'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude';
   }

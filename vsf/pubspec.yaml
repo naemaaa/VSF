@@ -43,8 +43,12 @@ dependencies:
   
   # Location & Maps
   geolocator: ^10.1.0
+  permission_handler: ^12.0.1
   google_maps_flutter: ^2.5.0
   geocoding: ^2.1.1
+  flutter_map: ^6.1.0
+  latlong2: ^0.9.1
+  flutter_map_marker_popup: ^5.1.0
   
   # Time & Currency
   timezone: ^0.10.1

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
+import 'package:geolocator/geolocator.dart';
 
 // Import models
 import 'models/user_model.dart';
@@ -12,6 +13,7 @@ import 'models/volunteer_registration.dart';
 
 // Import services
 import 'services/session_service.dart';
+import 'services/location_service.dart';
 
 // Import pages
 import 'pages/auth/login_page.dart';
@@ -19,6 +21,9 @@ import 'pages/main_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Request location permissions (untuk Mapbox + Location Services)
+  await _requestLocationPermissions();
 
   // Initialize Hive
   await Hive.initFlutter();
@@ -42,6 +47,7 @@ void main() async {
   await Hive.openBox<UserModel>('users');
   await Hive.openBox<EventModel>('events');
   await Hive.openBox<ArticleModel>('articles');
+
   try {
     await Hive.openBox<VolunteerRegistration>('registrations');
   } catch (e) {
@@ -55,6 +61,18 @@ void main() async {
   await seedDummyData();
 
   runApp(const MyApp());
+}
+
+// Request location permissions untuk Mapbox & Location Services
+Future<void> _requestLocationPermissions() async {
+  try {
+    final status = await Geolocator.checkPermission();
+    if (status == LocationPermission.denied) {
+      await Geolocator.requestPermission();
+    }
+  } catch (e) {
+    print('Location permission error: $e');
+  }
 }
 
 // Hash password menggunakan SHA256
@@ -110,7 +128,7 @@ Future<void> seedDummyData() async {
     await userBox.add(user1);
     await userBox.add(org1);
     await userBox.add(org2);
-
+    
     print('✅ Seed Users completed: 3 users');
   }
 

@@ -3,6 +3,7 @@ import 'package:hive/hive.dart';
 import 'dart:math';
 import '../../models/event_model.dart';
 import '../../models/volunteer_registration.dart';
+import '../../services/notification_service.dart';
 
 class ConfirmPaymentPage extends StatefulWidget {
   final VolunteerRegistration registration;
@@ -20,6 +21,7 @@ class ConfirmPaymentPage extends StatefulWidget {
 
 class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
   bool _isProcessing = false;
+  final NotificationService _notificationService = NotificationService();
 
   Future<void> _processPayment() async {
     try {
@@ -68,6 +70,17 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
           final event = eventList.first;
           event.addVolunteer(widget.registration.volunteerId);
           await eventBox.put(event.key, event);
+
+          // 🔔 Show notification
+          try {
+            await _notificationService.showPaymentSuccessNotification(
+              eventTitle: widget.event.title,
+              amount: widget.registration.donationAmount,
+            );
+            print('✅ Notification sent successfully');
+          } catch (e) {
+            print('⚠️ Error sending notification: $e');
+          }
 
           // Show success dialog  
           _showSuccessDialog();
@@ -152,6 +165,29 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
                 height: 1.5,
               ),
               textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue[50],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.notifications_active, color: Colors.blue[600], size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Notifikasi telah dikirim ke perangkat Anda',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.blue[600],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 24),
             SizedBox(

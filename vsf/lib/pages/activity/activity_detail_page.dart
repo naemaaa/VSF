@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:geolocator/geolocator.dart';
 import 'dart:io';
 import 'package:intl/intl.dart';
 import 'package:hive/hive.dart';
 import '../../models/event_model.dart';
 import '../../models/user_model.dart';
 import '../../models/volunteer_registration.dart';
+import '../../widgets/event_map_viewer.dart';
 import '../volunteer/register_volunteer_page.dart';
 import 'event_participants_page.dart';
+import '../../services/notification_service.dart';
 
 class ActivityDetailPage extends StatefulWidget {
   final EventModel event;
@@ -24,10 +27,81 @@ class ActivityDetailPage extends StatefulWidget {
 }
 
 class _ActivityDetailPageState extends State<ActivityDetailPage> {
-  final double _usdRate = 15800.0; // 1 USD = Rp 15,800
-  final double _eurRate = 17200.0; // 1 EUR = Rp 17,200
-
+  final double _usdRate = 15800.0;
+  final double _eurRate = 17200.0;
   String _selectedTimezone = 'WIB';
+  
+  String? _currentUserLat;
+  String? _currentUserLng;
+  String? _currentUserProvince;
+  bool _locationLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _setCurrentUserProvince();
+    _requestUserLocation();
+  }
+
+  void _setCurrentUserProvince() {
+    setState(() {
+      _currentUserProvince = widget.event.location.province;
+    });
+  }
+
+  Future<void> _requestUserLocation() async {
+    if (_locationLoading) return;
+    
+    setState(() => _locationLoading = true);
+    
+    try {
+      // Check permission
+      LocationPermission permission = await Geolocator.checkPermission();
+      
+      if (permission == LocationPermission.denied) {
+        print('📍 Location permission denied, requesting...');
+        permission = await Geolocator.requestPermission();
+      }
+      
+      if (permission == LocationPermission.deniedForever) {
+        print('❌ Location permission denied forever');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Izin lokasi ditolak. Aktifkan di pengaturan untuk melihat jarak.'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+      
+      if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
+        print('✅ Location permission granted');
+        
+        // Get current position
+        final position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 10),
+        );
+        
+        print('📍 Got user location: ${position.latitude}, ${position.longitude}');
+        
+        if (mounted) {
+          setState(() {
+            _currentUserLat = position.latitude.toString();
+            _currentUserLng = position.longitude.toString();
+          });
+        }
+      }
+    } catch (e) {
+      print('❌ Error getting location: $e');
+    }
+    
+    if (mounted) {
+      setState(() => _locationLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +109,6 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
       backgroundColor: Colors.white,
       body: CustomScrollView(
         slivers: [
-          // App Bar dengan Image
           SliverAppBar(
             expandedHeight: 280,
             pinned: true,
@@ -84,8 +157,6 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
               background: _buildHeaderImage(),
             ),
           ),
-
-          // Content
           SliverToBoxAdapter(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -95,7 +166,6 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Category Badge
                       Row(
                         children: [
                           Container(
@@ -117,7 +187,6 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
                             ),
                           ),
                           const Spacer(),
-                          // Status Badge
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 12,
@@ -147,8 +216,6 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
                         ],
                       ),
                       const SizedBox(height: 16),
-
-                      // Title
                       Text(
                         widget.event.title,
                         style: const TextStyle(
@@ -159,8 +226,6 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
                         ),
                       ),
                       const SizedBox(height: 16),
-
-                      // Organizer Info
                       Row(
                         children: [
                           CircleAvatar(
@@ -198,8 +263,6 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
                         ],
                       ),
                       const SizedBox(height: 24),
-
-                      // Description
                       const Text(
                         'Deskripsi Kegiatan',
                         style: TextStyle(
@@ -218,8 +281,6 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
                         ),
                       ),
                       const SizedBox(height: 24),
-
-                      // Waktu Kegiatan (KONVERSI 4 ZONA WAKTU)
                       const Text(
                         'Waktu Kegiatan',
                         style: TextStyle(
@@ -229,8 +290,6 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
                         ),
                       ),
                       const SizedBox(height: 12),
-
-                      // Timezone Selector
                       Row(
                         children: [
                           _buildTimezoneChip('WIB'),
@@ -243,8 +302,6 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
                         ],
                       ),
                       const SizedBox(height: 12),
-
-                      // Time Display
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
@@ -290,8 +347,6 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
                         ),
                       ),
                       const SizedBox(height: 24),
-
-                      // Lokasi
                       const Text(
                         'Lokasi',
                         style: TextStyle(
@@ -329,20 +384,26 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
                             SizedBox(
                               width: double.infinity,
                               child: OutlinedButton.icon(
-                                onPressed: () => _openGoogleMaps(),
+                                onPressed: _openGoogleMaps,
                                 icon: const Icon(Icons.map),
-                                label: const Text('Lihat Lokasi'),
+                                label: const Text('Lihat Lokasi di Maps'),
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: Colors.blue[600],
+                                  side: BorderSide(color: Colors.blue[600]!),
                                 ),
                               ),
                             ),
                           ],
                         ),
                       ),
+                      const SizedBox(height: 16),
+                      EventMapViewer(
+                        event: widget.event,
+                        currentUserLat: _currentUserLat,
+                        currentUserLng: _currentUserLng,
+                        currentUserProvince: _currentUserProvince,
+                      ),
                       const SizedBox(height: 24),
-
-                      // Harga Partisipasi (KONVERSI 3 MATA UANG)
                       const Text(
                         'Harga Partisipasi',
                         style: TextStyle(
@@ -380,8 +441,6 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
                         ],
                       ),
                       const SizedBox(height: 24),
-
-                      // Volunteer Progress
                       const Text(
                         'Jumlah Volunteer',
                         style: TextStyle(
@@ -448,217 +507,207 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
           ),
         ],
       ),
-      
-        bottomNavigationBar: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 10,
-                offset: const Offset(0, -5),
-              ),
-            ],
-          ),
-          child: SafeArea(
-            child: _buildBottomActions(),
-          ),
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, -5),
+            ),
+          ],
         ),
+        child: SafeArea(
+          child: _buildBottomActions(),
+        ),
+      ),
     );
   }
 
-    Widget _buildBottomActions() {
-      // If this is the organizer's event
-      if (widget.event.organizerId == widget.currentUser.id) {
-        return Row(
-          children: [
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => EventParticipantsPage(
-                        event: widget.event,
-                        currentUser: widget.currentUser,
-                      ),
+  Widget _buildBottomActions() {
+    if (widget.event.organizerId == widget.currentUser.id) {
+      return Row(
+        children: [
+          Expanded(
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => EventParticipantsPage(
+                      event: widget.event,
+                      currentUser: widget.currentUser,
                     ),
-                  );
-                },
-                icon: const Icon(Icons.people),
-                label: const Text('Lihat Peserta'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue[600],
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.people),
+              label: const Text('Lihat Peserta'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue[600],
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
-            const SizedBox(width: 12),
-            SizedBox(
-              width: 140,
-              child: OutlinedButton.icon(
-                onPressed: _openGoogleMaps,
-                icon: const Icon(Icons.map),
-                label: const Text('Lihat Maps'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.blue[600],
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ),
-          ],
-        );
-      }
-
-      final isRegistered = widget.event.isUserRegistered(widget.currentUser.id);
-
-      if (isRegistered) {
-        // If event already past, only show "Lihat Maps" button
-        if (widget.event.isPast) {
-          return SizedBox(
-            width: double.infinity,
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 140,
             child: OutlinedButton.icon(
               onPressed: _openGoogleMaps,
               icon: const Icon(Icons.map),
               label: const Text('Lihat Maps'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.blue[600],
+                side: BorderSide(color: Colors.blue[600]!),
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
-          );
-        }
+          ),
+        ],
+      );
+    }
 
-        return Row(
-          children: [
-            Expanded(
-              child: ElevatedButton(
-                onPressed: _confirmCancelRegistration,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red[600],
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                child: const Text('Batalkan Pendaftaran', style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
+    final isRegistered = widget.event.isUserRegistered(widget.currentUser.id);
+    if (isRegistered) {
+      if (widget.event.isPast) {
+        return SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _openGoogleMaps,
+            icon: const Icon(Icons.map),
+            label: const Text('Lihat Maps'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.blue[600],
+              side: BorderSide(color: Colors.blue[600]!),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
-            const SizedBox(width: 12),
-            SizedBox(
-              width: 140,
-              child: OutlinedButton.icon(
-                onPressed: _openGoogleMaps,
-                icon: const Icon(Icons.map),
-                label: const Text('Lihat Maps'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.blue[600],
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ),
-          ],
+          ),
         );
       }
+      return Row(
+        children: [
+          Expanded(
+            child: ElevatedButton(
+              onPressed: _confirmCancelRegistration,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red[600],
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('Batalkan Pendaftaran', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 140,
+            child: OutlinedButton.icon(
+              onPressed: _openGoogleMaps,
+              icon: const Icon(Icons.map),
+              label: const Text('Lihat Maps'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.blue[600],
+                side: BorderSide(color: Colors.blue[600]!),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
 
-      // Not registered: show register button
-      return SizedBox(
-        width: double.infinity,
-        child: ElevatedButton(
-          onPressed: widget.event.isFull || widget.event.isPast
-              ? null
-              : () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => RegisterVolunteerPage(
-                        event: widget.event,
-                        currentUser: widget.currentUser,
-                      ),
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: widget.event.isFull || widget.event.isPast
+            ? null
+            : () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => RegisterVolunteerPage(
+                      event: widget.event,
+                      currentUser: widget.currentUser,
                     ),
-                  );
-                },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.blue[600],
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            elevation: 0,
-            disabledBackgroundColor: Colors.grey[300],
+                  ),
+                );
+              },
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.blue[600],
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
           ),
-          child: Text(
-            widget.event.isFull
-                ? 'Kuota Penuh'
-                : widget.event.isPast
-                    ? 'Event Sudah Selesai'
-                    : 'Daftar Volunteer',
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
+          elevation: 0,
+          disabledBackgroundColor: Colors.grey[300],
+        ),
+        child: Text(
+          widget.event.isFull
+              ? 'Kuota Penuh'
+              : widget.event.isPast
+                  ? 'Event Sudah Selesai'
+                  : 'Daftar Volunteer',
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
           ),
         ),
+      ),
+    );
+  }
+
+  Future<void> _confirmCancelRegistration() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Batalkan Pendaftaran'),
+        content: const Text('Apakah Anda yakin ingin membatalkan pendaftaran untuk kegiatan ini?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Batal')),
+          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Ya, Batalkan')),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      await _cancelRegistration();
+    }
+  }
+
+  Future<void> _cancelRegistration() async {
+    try {
+      final regBox = Hive.box<VolunteerRegistration>('registrations');
+      final eventBox = Hive.box<EventModel>('events');
+      final regEntry = regBox.values.firstWhere(
+        (r) => r.eventId == widget.event.id && r.volunteerId == widget.currentUser.id,
+        orElse: () => throw Exception('Registration not found'),
       );
-    }
-
-    Future<void> _confirmCancelRegistration() async {
-      final confirm = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Batalkan Pendaftaran'),
-          content: const Text('Apakah Anda yakin ingin membatalkan pendaftaran untuk kegiatan ini?'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Batal')),
-            ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Ya, Batalkan')),
-          ],
-        ),
-      );
-
-      if (confirm == true) {
-        await _cancelRegistration();
-      }
-    }
-
-    Future<void> _cancelRegistration() async {
-      try {
-        final regBox = Hive.box<VolunteerRegistration>('registrations');
-        final eventBox = Hive.box<EventModel>('events');
-
-        final regEntry = regBox.values.firstWhere(
-          (r) => r.eventId == widget.event.id && r.volunteerId == widget.currentUser.id,
-          orElse: () => throw Exception('Registration not found'),
-        );
-
-        // Find the key and delete
-        dynamic foundKey;
-        for (final k in regBox.keys) {
-          final v = regBox.get(k);
-          if (v == regEntry) {
-            foundKey = k;
-            break;
-          }
+      dynamic foundKey;
+      for (final k in regBox.keys) {
+        final v = regBox.get(k);
+        if (v == regEntry) {
+          foundKey = k;
+          break;
         }
-        if (foundKey != null) await regBox.delete(foundKey);
-
-        // Update event volunteer count
-        final event = eventBox.values.firstWhere((e) => e.id == widget.event.id, orElse: () => widget.event);
-        event.removeVolunteer(widget.currentUser.id);
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pendaftaran berhasil dibatalkan')));
-          Navigator.pop(context); // go back to previous screen (list will refresh via listeners)
-        }
-      } catch (e) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal membatalkan pendaftaran')));
       }
+      if (foundKey != null) await regBox.delete(foundKey);
+      final event = eventBox.values.firstWhere((e) => e.id == widget.event.id, orElse: () => widget.event);
+      event.removeVolunteer(widget.currentUser.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pendaftaran berhasil dibatalkan')));
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal membatalkan pendaftaran')));
     }
+  }
 
   Widget _buildTimezoneChip(String timezone) {
     final isSelected = _selectedTimezone == timezone;
@@ -706,7 +755,6 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
       );
     }
 
-    // Assume local file path
     try {
       final file = File(url);
       return Image.file(
@@ -728,32 +776,25 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
   }
 
   String _getConvertedTime() {
-    // final startTime = widget.event.eventStartTime;
-    // final endTime = widget.event.eventEndTime;
-
-    // Offset dari UTC
     int offsetHours = 0;
     switch (_selectedTimezone) {
       case 'WIB':
-        offsetHours = 7; // UTC+7
+        offsetHours = 7;
         break;
       case 'WITA':
-        offsetHours = 8; // UTC+8
+        offsetHours = 8;
         break;
       case 'WIT':
-        offsetHours = 9; // UTC+9
+        offsetHours = 9;
         break;
       case 'London':
-        offsetHours = 0; // UTC+0 (GMT)
+        offsetHours = 0;
         break;
     }
-
-  // event times are stored in UTC; convert from UTC to selected timezone
-  final startUtc = widget.event.eventStartTime.toUtc();
-  final endUtc = widget.event.eventEndTime.toUtc();
-  final convertedStart = startUtc.add(Duration(hours: offsetHours));
-  final convertedEnd = endUtc.add(Duration(hours: offsetHours));
-
+    final startUtc = widget.event.eventStartTime.toUtc();
+    final endUtc = widget.event.eventEndTime.toUtc();
+    final convertedStart = startUtc.add(Duration(hours: offsetHours));
+    final convertedEnd = endUtc.add(Duration(hours: offsetHours));
     final formatter = DateFormat('HH:mm');
     return '${formatter.format(convertedStart)} - ${formatter.format(convertedEnd)}';
   }
@@ -804,14 +845,45 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
   }
 
   Future<void> _openGoogleMaps() async {
-    final url = widget.event.location.googleMapsUrl;
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
+    try {
+      final lat = widget.event.location.latitude;
+      final lng = widget.event.location.longitude;
+      
+      final googleMapsUrl = 'https://www.google.com/maps/search/?api=1&query=$lat,$lng';
+      
+      print('🗺️ Opening Google Maps: $googleMapsUrl');
+      
+      final uri = Uri.parse(googleMapsUrl);
+      
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication,
+        );
+      } else {
+        final mapsUrl = 'https://maps.google.com/?q=$lat,$lng';
+        final mapsUri = Uri.parse(mapsUrl);
+        
+        if (await canLaunchUrl(mapsUri)) {
+          await launchUrl(
+            mapsUri,
+            mode: LaunchMode.externalApplication,
+          );
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Tidak dapat membuka Google Maps.'),
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      print('❌ Error opening maps: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Tidak dapat membuka Google Maps')),
+          SnackBar(content: Text('Error: $e')),
         );
       }
     }
