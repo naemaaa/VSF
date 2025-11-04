@@ -42,7 +42,6 @@ void main() async {
   Hive.registerAdapter(UserModelAdapter());
   Hive.registerAdapter(EventLocationAdapter());
   Hive.registerAdapter(EventModelAdapter());
-  Hive.registerAdapter(ArticleModelAdapter());
   Hive.registerAdapter(VolunteerRegistrationAdapter());
   Hive.registerAdapter(UserStatsAdapter());
 
@@ -326,47 +325,6 @@ Future<void> seedDummyData() async {
     print('✅ Seed Events completed: 5 events');
   }
 
-  // Seed Articles jika belum ada
-  if (articleBox.isEmpty) {
-    final article1 = ArticleModel(
-      id: 'article_001',
-      title: 'Pentingnya Pendidikan Karakter untuk Anak Usia Dini',
-      imageUrl: 'https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=400',
-      externalLink: 'https://www.kompas.com/edu/read/2023/05/15/pendidikan-karakter-anak',
-      summary:
-          'Pendidikan karakter pada anak usia dini sangat penting untuk membentuk kepribadian yang baik.',
-      category: 'Pendidikan',
-      publishedAt: DateTime.now().subtract(const Duration(days: 3)),
-    );
-
-    final article2 = ArticleModel(
-      id: 'article_002',
-      title: 'Cara Sederhana Menjaga Kelestarian Lingkungan di Sekitar Kita',
-      imageUrl: 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=400',
-      externalLink: 'https://www.tempo.co/read/lingkungan/2023/06/20/tips-kelestarian',
-      summary:
-          'Berbagai cara sederhana yang bisa kita lakukan untuk menjaga kelestarian lingkungan sekitar.',
-      category: 'Lingkungan',
-      publishedAt: DateTime.now().subtract(const Duration(days: 5)),
-    );
-
-    final article3 = ArticleModel(
-      id: 'article_003',
-      title: 'Gerakan Tanam 1000 Pohon untuk Kota Hijau',
-      imageUrl: 'https://images.unsplash.com/photo-1466692476868-aef1dfb1e735?w=400',
-      externalLink: 'https://www.detik.com/news/berita/2023/07/01/gerakan-tanam-1000-pohon',
-      summary:
-          'Gerakan masyarakat menanam 1000 pohon untuk menciptakan kota yang lebih hijau dan asri.',
-      category: 'Lingkungan',
-      publishedAt: DateTime.now().subtract(const Duration(hours: 12)),
-    );
-
-    await articleBox.add(article1);
-    await articleBox.add(article2);
-    await articleBox.add(article3);
-
-    print('✅ Seed Articles completed: 3 articles');
-  }
 }
 
 class MyApp extends StatelessWidget {

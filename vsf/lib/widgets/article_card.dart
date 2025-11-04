@@ -39,7 +39,7 @@ class ArticleCard extends StatelessWidget {
                 top: Radius.circular(AppConstants.borderRadiusMedium),
               ),
               child: Image.network(
-                article.imageUrl,
+                article.imageUrl ?? AppConstants.imagePlaceholder,
                 height: 120,
                 width: double.infinity,
                 fit: BoxFit.cover,
@@ -66,7 +66,7 @@ class ArticleCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
-                      article.category,
+                      article.category ?? '',
                       style: TextStyle(
                         fontSize: 10,
                         color: _getCategoryColor(),
@@ -107,7 +107,7 @@ class ArticleCard extends StatelessWidget {
   }
   
   Color _getCategoryColor() {
-    switch (article.category.toLowerCase()) {
+    switch (article.category?? 'Umum'.toLowerCase()) {
       case 'pendidikan':
         return Colors.blue;
       case 'lingkungan':
