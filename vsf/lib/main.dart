@@ -11,6 +11,8 @@ import 'models/event_location.dart';
 import 'models/article_model.dart';
 import 'models/volunteer_registration.dart';
 import 'models/user_stats_model.dart';
+import 'services/notification_service.dart';
+
 
 // Import services
 import 'services/session_service.dart';
@@ -42,6 +44,7 @@ void main() async {
   Hive.registerAdapter(EventModelAdapter());
   Hive.registerAdapter(ArticleModelAdapter());
   Hive.registerAdapter(VolunteerRegistrationAdapter());
+  Hive.registerAdapter(UserStatsAdapter());
 
   // Open Boxes in correct order
   await Hive.openBox<UserModel>('users');
@@ -49,6 +52,19 @@ void main() async {
   await Hive.openBox<EventModel>('events');
   await Hive.openBox<ArticleModel>('articles');
 
+  //Initialize Notification Service
+  final notificationService = NotificationService();
+  await notificationService.initialize();
+  
+  // ← CHECK PERMISSION STATUS
+  print('📲 Checking notification permission...');
+  final granted = await notificationService.requestPermissions();
+  print('📲 Permission granted: $granted');
+
+  print('📍 Requesting location permission at startup...');
+  await _requestLocationPermissionOnce();
+
+  runApp(const MyApp());
   try {
     await Hive.openBox<VolunteerRegistration>('registrations');
   } catch (e) {
@@ -81,6 +97,37 @@ String hashPassword(String password) {
   final bytes = utf8.encode(password);
   final hash = sha256.convert(bytes);
   return hash.toString();
+}
+Future<void> _requestLocationPermissionOnce() async {
+  try {
+    final status = await Geolocator.checkPermission();
+    print('   Current permission status: $status');
+
+    if (status == LocationPermission.denied) {
+      print('   📍 Permission denied, requesting...');
+      final newStatus = await Geolocator.requestPermission();
+      print('   After request: $newStatus');
+
+      if (newStatus == LocationPermission.whileInUse ||
+          newStatus == LocationPermission.always) {
+        print('   ✅ Location permission granted');
+      } else if (newStatus == LocationPermission.deniedForever) {
+        print('   ❌ Location permission denied forever');
+      }
+    } else if (status == LocationPermission.whileInUse ||
+        status == LocationPermission.always) {
+      print('   ✅ Location permission already granted');
+    } else if (status == LocationPermission.deniedForever) {
+      print('   ❌ Location permission denied forever');
+    }
+
+    // Also check if location service is enabled
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    print('   Location service enabled: $serviceEnabled');
+
+  } catch (e) {
+    print('   ⚠️ Error requesting location permission: $e');
+  }
 }
 
 Future<void> seedDummyData() async {

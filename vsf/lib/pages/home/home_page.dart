@@ -36,6 +36,14 @@ class _HomePageState extends State<HomePage> {
       _loadCurrentUser();
       if (mounted) setState(() {});
     });
+    
+    // ← TAMBAH: Listen untuk stats changes
+    _statsBox.listenable().addListener(() {
+      print('📊 UserStats box changed, refreshing...');
+      if (_currentUser != null) {
+        _loadUserStats(_currentUser!.id);
+      }
+    });
   }
 
   Future<void> _loadCurrentUser() async {

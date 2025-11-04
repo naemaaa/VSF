@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 class NotificationService {
@@ -35,7 +36,6 @@ class NotificationService {
       onDidReceiveNotificationResponse: _onNotificationTapped,
     );
 
-    // ⭐ PENTING: Enable foreground notifications untuk Android 12+
     try {
       final androidPlugin =
           _flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<
@@ -47,7 +47,7 @@ class NotificationService {
         print('   📲 Android notification permission: $granted');
       }
     } catch (e) {
-      print('   ⚠️ Error requesting Android permissions: $e');
+      print('   ⚠️ Error: $e');
     }
 
     _isInitialized = true;
@@ -90,27 +90,22 @@ class NotificationService {
     print('🔔 Showing payment success notification...');
 
     try {
-      // Format amount dengan pemisah ribuan
       String formattedAmount = 'Rp ${amount.toString().replaceAllMapped(
         RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
         (Match m) => '${m[1]}.',
       )}';
 
-      // Android Notification Details - dengan priority HIGH untuk muncul di foreground
       const AndroidNotificationDetails androidDetails =
           AndroidNotificationDetails(
         'payment_channel',
-        'Payment Notifications',
-        channelDescription: 'Notifications for payment status',
-        importance: Importance.max, // ⭐ MAX untuk foreground
-        priority: Priority.max,     // ⭐ MAX priority
+        'Payment',
+        importance: Importance.max,
+        priority: Priority.high,
         icon: '@mipmap/ic_launcher',
         playSound: true,
         enableVibration: true,
-        showWhen: true,
       );
 
-      // iOS Notification Details
       const DarwinNotificationDetails iosDetails =
           DarwinNotificationDetails(
         presentAlert: true,
@@ -123,12 +118,7 @@ class NotificationService {
         iOS: iosDetails,
       );
 
-      // Generate unique ID untuk notification
-      final notificationId = DateTime.now().millisecondsSinceEpoch.remainder(100000);
-
-      print('   ID: $notificationId');
-      print('   Title: ✅ Pembayaran Berhasil!');
-      print('   Body: Pembayaran untuk "$eventTitle" sebesar $formattedAmount berhasil diproses.');
+      final notificationId = DateTime.now().millisecondsSinceEpoch % 100000;
 
       await _flutterLocalNotificationsPlugin.show(
         notificationId,
@@ -138,15 +128,13 @@ class NotificationService {
         payload: 'payment_success',
       );
 
-      print('✅ Notification sent successfully');
+      print('✅ Notification sent with ID: $notificationId');
     } catch (e) {
       print('❌ Error showing notification: $e');
-      print('   Error type: ${e.runtimeType}');
     }
   }
 
   Future<void> cancelAllNotifications() async {
-    print('🔔 Cancelling all notifications...');
     await _flutterLocalNotificationsPlugin.cancelAll();
   }
 }
