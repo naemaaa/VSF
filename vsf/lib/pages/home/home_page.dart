@@ -5,7 +5,6 @@ import '../article/article_detail_page.dart';
 import '../../services/event_service.dart';
 import '../../models/event_model.dart';
 import '../../models/user_model.dart';
-import 'package:hive/hive.dart';
 
 class HomePage extends StatefulWidget {
   final UserModel currentUser;
