@@ -1,11 +1,10 @@
+// pages/register_individual_page.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:crypto/crypto.dart';
-import 'dart:convert';
-import 'package:hive/hive.dart';
 import 'package:latlong2/latlong.dart';
 import '../../models/user_model.dart';
 import '../../widgets/location_picker.dart';
+import '../../services/auth_service.dart'; // Import Service (ganti auth_service)
 
 class RegisterIndividualPage extends StatefulWidget {
   const RegisterIndividualPage({super.key});
@@ -22,6 +21,8 @@ class _RegisterIndividualPageState extends State<RegisterIndividualPage> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
+  final SupabaseAuthService _authService = SupabaseAuthService(); // Instance Service
+
   LatLng? _selectedLocation;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
@@ -37,11 +38,7 @@ class _RegisterIndividualPageState extends State<RegisterIndividualPage> {
     super.dispose();
   }
 
-  String _hashPassword(String password) {
-    final bytes = utf8.encode(password);
-    final hash = sha256.convert(bytes);
-    return hash.toString();
-  }
+  // HAPUS FUNGSI _hashPassword LOKAL!
 
   void _handleLocationPicked(LatLng location) {
     setState(() {
@@ -56,29 +53,23 @@ class _RegisterIndividualPageState extends State<RegisterIndividualPage> {
     setState(() => _isLoading = true);
 
     try {
-      final userBox = Hive.box<UserModel>('users');
       final email = _emailController.text.trim().toLowerCase();
+      // KIRIM PASSWORD MENTAH
+      final password = _passwordController.text;
+      
+      final lat = _selectedLocation?.latitude;
+      final lng = _selectedLocation?.longitude;
 
-      // Check email sudah terdaftar
-      for (var user in userBox.values) {
-        if (user.email.toLowerCase() == email) {
-          _showError('Email sudah terdaftar');
-          return;
-        }
-      }
-
-      // Buat user baru
-      final newUser = UserModel(
-        id: 'user_${DateTime.now().millisecondsSinceEpoch}',
+      // Panggil Service untuk Auth Lokal dan Sinkronisasi ID ke Supabase
+      final uid = await _authService.registerAndSyncId(
         email: email,
-        passwordHash: _hashPassword(_passwordController.text),
         userType: UserType.individual,
+        password: password, // Kirim password mentah
         fullName: _nameController.text.trim(),
         nik: _nikController.text.trim(),
-        // Simpan lokasi jika dipilih
+        latitude: lat,
+        longitude: lng,
       );
-
-      await userBox.add(newUser);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -91,7 +82,7 @@ class _RegisterIndividualPageState extends State<RegisterIndividualPage> {
         Navigator.pop(context);
       }
     } catch (e) {
-      _showError('Terjadi kesalahan: $e');
+      _showError(e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

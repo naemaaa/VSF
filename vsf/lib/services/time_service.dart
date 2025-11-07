@@ -5,12 +5,11 @@ class TimeService {
   factory TimeService() => _instance;
   TimeService._internal();
 
-  // Offset dari UTC (dalam jam)
   final Map<String, int> _timezoneOffsets = {
-    'WIB': 7,   // UTC+7
-    'WITA': 8,  // UTC+8
-    'WIT': 9,   // UTC+9
-    'London': 0, // UTC+0
+    'WIB': 7,   
+    'WITA': 8,  
+    'WIT': 9,   
+    'London': 0, 
   };
 
   DateTime convertToTimezone(DateTime utcTime, String timezone) {

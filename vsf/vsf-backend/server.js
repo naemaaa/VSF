@@ -143,7 +143,6 @@ app.get('/api/events', async (req, res) => {
         city: row.location_city,
         district: row.location_district,
         village: row.location_village,
-        rtRw: row.location_rt_rw,
         latitude: row.location_latitude,
         longitude: row.location_longitude,
       }
@@ -173,7 +172,6 @@ app.get('/api/events/:id', async (req, res) => {
         city: row.location_city,
         district: row.location_district,
         village: row.location_village,
-        rtRw: row.location_rt_rw,
         latitude: row.location_latitude,
         longitude: row.location_longitude,
       }
@@ -225,7 +223,7 @@ app.post('/api/events', async (req, res) => {
         eventStartTime, eventEndTime, targetVolunteerCount,
         participationFeeIdr, category, true,
         location.country, location.province, location.city,
-        location.district, location.village, location.rtRw,
+        location.district, location.village,
         location.latitude, location.longitude
       ]
     );
@@ -259,7 +257,6 @@ app.get('/api/events/search', async (req, res) => {
         city: row.location_city,
         district: row.location_district,
         village: row.location_village,
-        rtRw: row.location_rt_rw,
         latitude: row.location_latitude,
         longitude: row.location_longitude,
       }
@@ -287,7 +284,6 @@ app.get('/api/events/organizer/:organizerId', async (req, res) => {
         city: row.location_city,
         district: row.location_district,
         village: row.location_village,
-        rtRw: row.location_rt_rw,
         latitude: row.location_latitude,
         longitude: row.location_longitude,
       }

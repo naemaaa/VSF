@@ -1,3 +1,4 @@
+// event_model.dart
 import 'package:hive/hive.dart';
 import 'event_location.dart';
 
@@ -5,63 +6,38 @@ part 'event_model.g.dart';
 
 @HiveType(typeId: 4)
 class EventModel extends HiveObject {
-  @HiveField(0)
-  String id;
-
-  @HiveField(1)
-  String title;
-
-  @HiveField(2)
-  String description;
-
-  @HiveField(3)
-  String? imageUrl;
+  @HiveField(0) final String id;
+  @HiveField(1) final String title;
+  @HiveField(2) final String description;
+  @HiveField(3) final String? imageUrl;
 
   // Organizer info
-  @HiveField(4)
-  String organizerId;
-
-  @HiveField(5)
-  String organizerName;
-
-  @HiveField(6)
-  String? organizerImageUrl;
+  @HiveField(4) final String organizerId;
+  @HiveField(5) final String organizerName;
+  @HiveField(6) final String? organizerImageUrl;
 
   // Location (detail)
-  @HiveField(7)
-  EventLocation location;
+  @HiveField(7) final EventLocationModel location;
 
   // Time (UTC untuk consistency)
-  @HiveField(8)
-  DateTime eventStartTime;
-
-  @HiveField(9)
-  DateTime eventEndTime;
+  @HiveField(8) final DateTime eventStartTime;
+  @HiveField(9) final DateTime eventEndTime;
 
   // Volunteer & Donation
-  @HiveField(10)
-  int targetVolunteerCount;
-
-  @HiveField(11)
-  int currentVolunteerCount;
-
-  @HiveField(12)
-  int participationFeeIdr; // Harga partisipasi (bisa 0 untuk gratis)
+  @HiveField(10) final int targetVolunteerCount;
+  @HiveField(11) int currentVolunteerCount; // <-- Dibiarkan non-final agar bisa dimutasi oleh Hive save()
+  @HiveField(12) final int participationFeeIdr; 
 
   // Category
-  @HiveField(13)
-  String category; // "Pendidikan", "Anak-anak", "Lingkungan", "Kesehatan", "Sosial"
+  @HiveField(13) final String category; 
 
   // Status
-  @HiveField(14)
-  bool isActive;
+  @HiveField(14) final bool isActive;
 
-  @HiveField(15)
-  DateTime createdAt;
+  @HiveField(15) final DateTime createdAt;
 
   // List volunteer IDs yang sudah daftar
-  @HiveField(16)
-  List<String> registeredVolunteerIds;
+  @HiveField(16) final List<String> registeredVolunteerIds;
 
   EventModel({
     required this.id,
@@ -83,37 +59,82 @@ class EventModel extends HiveObject {
     List<String>? registeredVolunteerIds,
   })  : createdAt = createdAt ?? DateTime.now(),
         registeredVolunteerIds = registeredVolunteerIds ?? [];
+  
+  // ==================== FACTORY FROM JSON ====================
+  // (Sama seperti implementasi terakhir)
+  factory EventModel.fromJson(Map<String, dynamic> json) {
+    List<String> parseRegisteredIds(dynamic value) {
+      if (value is List) return value.map((e) => e.toString()).toList();
+      return [];
+    }
 
-  // ==================== GETTERS ====================
+    double parseCoordinate(dynamic value) {
+      if (value is num) return value.toDouble();
+      if (value is String) return double.tryParse(value) ?? 0.0;
+      return 0.0;
+    }
 
-  // Apakah event sudah penuh?
+    final locationModel = EventLocationModel(
+      country: json['location_country'] as String? ?? '',
+      province: json['location_province'] as String? ?? '',
+      city: json['location_city'] as String? ?? '',
+      district: json['location_district'] as String? ?? '',
+      village: json['location_village'] as String? ?? '',
+      latitude: parseCoordinate(json['location_latitude']),
+      longitude: parseCoordinate(json['location_longitude']),
+    );
+    
+    final id = json['id'].toString();
+
+    return EventModel(
+      id: id,
+      title: json['title'] as String,
+      description: json['description'] as String,
+      imageUrl: json['image_url'] as String?,
+      organizerId: json['organizer_id'] as String,
+      organizerName: json['organizer_name'] as String,
+      organizerImageUrl: json['organizer_image_url'] as String?,
+      location: locationModel,
+      eventStartTime: DateTime.parse(json['event_start_time'] as String).toUtc(),
+      eventEndTime: DateTime.parse(json['event_end_time'] as String).toUtc(),
+      targetVolunteerCount: json['target_volunteer_count'] as int,
+      currentVolunteerCount: json['current_volunteer_count'] as int? ?? 0,
+      participationFeeIdr: json['participation_fee_idr'] as int? ?? 0,
+      category: json['category'] as String,
+      isActive: json['is_active'] as bool? ?? true,
+      createdAt: DateTime.parse(json['created_at'] as String).toUtc(),
+      registeredVolunteerIds: parseRegisteredIds(json['registered_volunteer_ids']),
+    );
+  }
+
+
+  // ==================== GETTERS (Diperlukan oleh UI) ====================
+
+  // Getter: volunteerPercentage (Error di image_37a796.png)
+  double get volunteerPercentage {
+    if (targetVolunteerCount == 0) return 0;
+    return (currentVolunteerCount / targetVolunteerCount) * 100;
+  }
+  
+  // Getter: remainingSlots (Diperlukan di ActivityDetailPage)
+  int get remainingSlots => targetVolunteerCount - currentVolunteerCount;
+
+  // Getter: isFull (Diperlukan di ActivityDetailPage)
   bool get isFull => currentVolunteerCount >= targetVolunteerCount;
 
-  // Apakah event sudah lewat?
+  // Getter: isPast (Diperlukan di ActivityDetailPage)
   bool get isPast => DateTime.now().toUtc().isAfter(eventEndTime);
 
-  // Apakah event sedang berlangsung?
+  // Getter: isOngoing (Diperlukan di ActivityDetailPage)
   bool get isOngoing {
     final now = DateTime.now().toUtc();
     return now.isAfter(eventStartTime) && now.isBefore(eventEndTime);
   }
 
-  // Apakah event akan datang?
-  bool get isUpcoming => DateTime.now().toUtc().isBefore(eventStartTime);
-
-  // Persentase volunteer terdaftar
-  double get volunteerPercentage {
-    if (targetVolunteerCount == 0) return 0;
-    return (currentVolunteerCount / targetVolunteerCount) * 100;
-  }
-
-  // Sisa slot volunteer
-  int get remainingSlots => targetVolunteerCount - currentVolunteerCount;
-
-  // Apakah gratis?
+  // Getter: isFree (Diperlukan di ActivityDetailPage)
   bool get isFree => participationFeeIdr == 0;
 
-  // Format harga untuk display
+  // Getter: formattedPrice (Diperlukan di ActivityDetailPage & EventCard)
   String get formattedPrice {
     if (isFree) return 'Gratis';
     return 'Rp ${participationFeeIdr.toString().replaceAllMapped(
@@ -122,23 +143,16 @@ class EventModel extends HiveObject {
     )}';
   }
 
-  // Status event untuk display
+  // Getter: eventStatus (Diperlukan di ActivityDetailPage & EventCard)
   String get eventStatus {
     if (isPast) return 'Selesai';
-    if (isOngoing) return 'Sedang Berlangsung';
+    if (!isActive) return 'Tidak Aktif';
     if (isFull) return 'Penuh';
-    return 'Tersedia';
+    if (isOngoing) return 'Berlangsung';
+    return 'Tersedia'; // Upcoming
   }
 
-  // Warna status untuk UI
-  String get statusColor {
-    if (isPast) return 'grey';
-    if (isOngoing) return 'green';
-    if (isFull) return 'red';
-    return 'blue';
-  }
-
-  // Format tanggal event untuk display
+  // Getter: formattedEventDate (Diperlukan di ActivityDetailPage & EventCard)
   String get formattedEventDate {
     final months = [
       'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
@@ -147,48 +161,35 @@ class EventModel extends HiveObject {
     
     final days = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
     final local = eventStartTime.toLocal();
-    return '${days[local.weekday % 7]}, ${local.day} ${months[local.month - 1]} ${local.year}';
+    final dayIndex = local.weekday % 7; 
+    return '${days[dayIndex]}, ${local.day} ${months[local.month - 1]} ${local.year}';
   }
+  
+  // ==================== METHODS (Diperlukan oleh ActivityDetailPage) ====================
 
-  // Format waktu event (jam saja)
-  String get formattedEventTime {
-    String formatTime(DateTime dt) {
-      return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  // Method: isUserRegistered (Error di image_37a737.png)
+  bool isUserRegistered(String userId) {
+    return registeredVolunteerIds.contains(userId);
+  }
+  
+  // Method: removeVolunteer (Error di image_37a6fa.png)
+  void removeVolunteer(String volunteerId) {
+    if (registeredVolunteerIds.contains(volunteerId)) {
+      registeredVolunteerIds.remove(volunteerId);
+      currentVolunteerCount = currentVolunteerCount > 0 ? currentVolunteerCount - 1 : 0;
+      // Perhatikan: Karena currentVolunteerCount diubah menjadi non-final, mutasi ini
+      // akan tersimpan saat event.save() dipanggil di ActivityDetailPage.
     }
-    final startLocal = eventStartTime.toLocal();
-    final endLocal = eventEndTime.toLocal();
-    final tzName = startLocal.timeZoneName;
-    return '${formatTime(startLocal)} - ${formatTime(endLocal)} $tzName';
   }
-
-  // ==================== METHODS ====================
-
-  // Tambah volunteer
+  
+  // Method: addVolunteer (Diperlukan untuk konsistensi/future use)
   void addVolunteer(String volunteerId) {
     if (!registeredVolunteerIds.contains(volunteerId) && !isFull) {
       registeredVolunteerIds.add(volunteerId);
       currentVolunteerCount++;
-      save(); // Save ke Hive
     }
   }
 
-  // Hapus volunteer
-  void removeVolunteer(String volunteerId) {
-    if (registeredVolunteerIds.contains(volunteerId)) {
-      registeredVolunteerIds.remove(volunteerId);
-      currentVolunteerCount--;
-      save(); // Save ke Hive
-    }
-  }
-
-  // Check apakah user sudah terdaftar
-  bool isUserRegistered(String userId) {
-    return registeredVolunteerIds.contains(userId);
-  }
-
-  // Untuk debugging
   @override
-  String toString() {
-    return 'EventModel(id: $id, title: $title, volunteers: $currentVolunteerCount/$targetVolunteerCount)';
-  }
+  String toString() => 'EventModel(id: $id, title: $title)';
 }

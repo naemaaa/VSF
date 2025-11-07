@@ -22,11 +22,11 @@ class ArticleDetailPage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Image
-            if (article.imageUrl != null && article.imageUrl!.isNotEmpty)
+            if (article.imageUrl.isNotEmpty)
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: Image.network(
-                  article.imageUrl!,
+                  article.imageUrl,
                   width: double.infinity,
                   height: 250,
                   fit: BoxFit.cover,
@@ -86,16 +86,16 @@ class ArticleDetailPage extends StatelessWidget {
                   style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                 ),
                 const SizedBox(width: 16),
-                Icon(Icons.visibility, size: 16, color: Colors.grey[600]),
+                Icon(Icons.link, size: 16, color: Colors.grey[600]),
                 const SizedBox(width: 6),
-                Text(
-                  '${article.views} views',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                const Text( 
+                  'Link', 
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
                 ),
               ],
             ),
             const SizedBox(height: 16),
-            const Divider(),
+            const Divider(height: 2),
             const SizedBox(height: 16),
 
             // Description

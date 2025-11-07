@@ -1,3 +1,4 @@
+// user_model.dart
 import 'package:hive/hive.dart';
 
 part 'user_model.g.dart';
@@ -13,13 +14,13 @@ enum UserType {
 @HiveType(typeId: 1)
 class UserModel extends HiveObject {
   @HiveField(0)
-  String id;
+  String id; // UID dari Supabase
 
   @HiveField(1)
   String email;
 
   @HiveField(2)
-  String passwordHash;
+  String passwordHash; // Disimpan lokal di Hive
 
   @HiveField(3)
   UserType userType;
@@ -49,6 +50,13 @@ class UserModel extends HiveObject {
 
   @HiveField(11)
   DateTime createdAt;
+  
+  // Tambahan untuk lokasi individu
+  @HiveField(12)
+  double? latitude;
+  
+  @HiveField(13)
+  double? longitude;
 
   UserModel({
     required this.id,
@@ -62,12 +70,13 @@ class UserModel extends HiveObject {
     this.phone,
     this.bio,
     this.profileImagePath,
+    this.latitude,
+    this.longitude,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
 
   // ==================== GETTERS ====================
 
-  // Getter untuk nama (universal untuk individu & organisasi)
   String get displayName {
     if (userType == UserType.individual) {
       return fullName ?? 'User';
@@ -76,7 +85,6 @@ class UserModel extends HiveObject {
     }
   }
 
-  // Getter untuk nomor identitas
   String? get identityNumber {
     if (userType == UserType.individual) {
       return nik;
@@ -85,7 +93,6 @@ class UserModel extends HiveObject {
     }
   }
 
-  // Label untuk nomor identitas
   String get identityLabel {
     if (userType == UserType.individual) {
       return 'NIK';
@@ -94,23 +101,17 @@ class UserModel extends HiveObject {
     }
   }
 
-  // Check apakah organisasi
   bool get isOrganization => userType == UserType.organization;
-
-  // Check apakah individu
   bool get isIndividual => userType == UserType.individual;
 
-  // Format tanggal bergabung
   String get formattedJoinDate {
     final months = [
       'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
       'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
     ];
-    
     return '${createdAt.day} ${months[createdAt.month - 1]} ${createdAt.year}';
   }
 
-  // Inisial untuk avatar placeholder
   String get initials {
     final name = displayName;
     final parts = name.split(' ');
@@ -123,11 +124,9 @@ class UserModel extends HiveObject {
     return 'U';
   }
 
-  // Format nomor telepon untuk display
   String get formattedPhone {
     if (phone == null || phone!.isEmpty) return '-';
     
-    // Format: +62 812 3456 7890 -> 0812-3456-7890
     String formatted = phone!.replaceAll(RegExp(r'[^\d]'), '');
     
     if (formatted.startsWith('62')) {
@@ -143,7 +142,6 @@ class UserModel extends HiveObject {
 
   // ==================== METHODS ====================
 
-  // Update profile
   void updateProfile({
     String? fullName,
     String? organizationName,
@@ -164,7 +162,6 @@ class UserModel extends HiveObject {
     save(); // Save ke Hive
   }
 
-  // Untuk debugging
   @override
   String toString() {
     return 'UserModel(id: $id, name: $displayName, type: $userType)';

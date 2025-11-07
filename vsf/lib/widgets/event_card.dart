@@ -1,6 +1,12 @@
+// event_card.dart
 import 'package:flutter/material.dart';
 import '../models/event_model.dart';
-import '../utils/constants.dart';
+// import '../utils/constants.dart'; // Dianggap ada, atau ganti dengan nilai default
+
+// Ganti AppConstants.imagePlaceholder & AppConstants.borderRadiusMedium
+// dengan nilai default/konstanta lokal jika file constants.dart tidak disertakan.
+const _defaultImagePlaceholder = 'https://via.placeholder.com/400x200?text=No+Image';
+const _borderRadiusMedium = 12.0;
 
 class EventCard extends StatelessWidget {
   final EventModel event;
@@ -12,6 +18,13 @@ class EventCard extends StatelessWidget {
     required this.onTap,
   });
 
+  Color _getStatusColor() {
+    if (event.isPast) return Colors.grey[600]!;
+    if (event.isFull) return Colors.red;
+    if (event.isOngoing) return Colors.green;
+    return Colors.blue;
+  }
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -20,7 +33,7 @@ class EventCard extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(AppConstants.borderRadiusMedium),
+          borderRadius: BorderRadius.circular(_borderRadiusMedium),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.05),
@@ -37,18 +50,27 @@ class EventCard extends StatelessWidget {
               children: [
                 ClipRRect(
                   borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(AppConstants.borderRadiusMedium),
+                    top: Radius.circular(_borderRadiusMedium),
                   ),
                   child: Image.network(
-                    event.imageUrl ?? AppConstants.imagePlaceholder,
+                    // Menggunakan URL yang ada di model, fallback ke placeholder
+                    event.imageUrl ?? _defaultImagePlaceholder,
                     height: 160,
                     width: double.infinity,
                     fit: BoxFit.cover,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return Container(
+                        height: 160,
+                        color: Colors.grey[200],
+                        child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                      );
+                    },
                     errorBuilder: (context, error, stackTrace) {
                       return Container(
                         height: 160,
                         color: Colors.grey[200],
-                        child: const Icon(Icons.image, size: 64),
+                        child: const Icon(Icons.image, size: 64, color: Colors.grey),
                       );
                     },
                   ),
@@ -118,7 +140,8 @@ class EventCard extends StatelessWidget {
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
-                          event.location.fullAddress,
+                          // Menggunakan fullAddress yang sudah didefinisikan di EventLocationModel
+                          event.location.fullAddress, 
                           style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -134,6 +157,7 @@ class EventCard extends StatelessWidget {
                       Icon(Icons.calendar_today_outlined, size: 16, color: Colors.grey[600]),
                       const SizedBox(width: 4),
                       Text(
+                        // Menggunakan formattedEventDate dari model
                         event.formattedEventDate,
                         style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                       ),
@@ -166,6 +190,7 @@ class EventCard extends StatelessWidget {
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
+                          // Menggunakan formattedPrice dari model
                           event.formattedPrice,
                           style: TextStyle(
                             fontSize: 12,
@@ -183,12 +208,5 @@ class EventCard extends StatelessWidget {
         ),
       ),
     );
-  }
-  
-  Color _getStatusColor() {
-    if (event.isFull) return Colors.red;
-    if (event.isPast) return Colors.grey;
-    if (event.isOngoing) return Colors.green;
-    return Colors.blue;
   }
 }

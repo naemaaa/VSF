@@ -24,34 +24,40 @@ import 'pages/main_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Request location permissions (untuk Mapbox + Location Services)
+  // Request location permissions
   await _requestLocationPermissions();
 
   // Initialize Hive
   await Hive.initFlutter();
 
-  // Delete all Hive boxes
-  try {
-    await Hive.deleteFromDisk();
-  } catch (e) {
-    print('Error deleting Hive data: $e');
-  }
-
+  // Delete all Hive boxes (untuk testing - COMMENT ini kalau sudah prod)
+  // try {
+  //   await Hive.deleteFromDisk();
+  // } catch (e) {
+  //   print('Error deleting Hive data: $e');
+  // }
+  await Hive.deleteBoxFromDisk('user_stats');
+  await Hive.deleteBoxFromDisk('articles');
   // Register Adapters
   Hive.registerAdapter(UserTypeAdapter());
   Hive.registerAdapter(UserModelAdapter());
-  Hive.registerAdapter(EventLocationAdapter());
+  Hive.registerAdapter(ArticleModelAdapter());
+  Hive.registerAdapter(EventLocationModelAdapter());
   Hive.registerAdapter(EventModelAdapter());
   Hive.registerAdapter(VolunteerRegistrationAdapter());
   Hive.registerAdapter(UserStatsAdapter());
+  
+  
 
-  // Open Boxes in correct order
+  // Open Boxes
   await Hive.openBox<UserModel>('users');
-  await Hive.openBox<UserStats>('user_stats');
-  await Hive.openBox<EventModel>('events');
+  await Hive.openBox<UserStats>('user_stats');  
   await Hive.openBox<ArticleModel>('articles');
+  await Hive.openBox<EventModel>('events');
+  await Hive.openBox<VolunteerRegistration>('registrations');
 
-  //Initialize Notification Service
+
+  // Initialize Notification Service
   final notificationService = NotificationService();
   await notificationService.initialize();
   
@@ -63,23 +69,13 @@ void main() async {
   print('📍 Requesting location permission at startup...');
   await _requestLocationPermissionOnce();
 
-  runApp(const MyApp());
-  try {
-    await Hive.openBox<VolunteerRegistration>('registrations');
-  } catch (e) {
-    print('Error opening registrations box: $e');
-    // Try to delete and recreate if there's an error
-    await Hive.deleteBoxFromDisk('registrations');
-    await Hive.openBox<VolunteerRegistration>('registrations');
-  }
-
-  // Seed dummy data jika box kosong
+  // ← SEED DATA (User & Event saja, TIDAK termasuk Artikel)
   await seedDummyData();
 
   runApp(const MyApp());
 }
 
-// Request location permissions untuk Mapbox & Location Services
+// Request location permissions
 Future<void> _requestLocationPermissions() async {
   try {
     final status = await Geolocator.checkPermission();
@@ -91,12 +87,13 @@ Future<void> _requestLocationPermissions() async {
   }
 }
 
-// Hash password menggunakan SHA256
+// Hash password
 String hashPassword(String password) {
   final bytes = utf8.encode(password);
   final hash = sha256.convert(bytes);
   return hash.toString();
 }
+
 Future<void> _requestLocationPermissionOnce() async {
   try {
     final status = await Geolocator.checkPermission();
@@ -129,14 +126,13 @@ Future<void> _requestLocationPermissionOnce() async {
   }
 }
 
+// ← SEED HANYA User & Event (ARTIKEL DIAMBIL DARI API)
 Future<void> seedDummyData() async {
   final userBox = Hive.box<UserModel>('users');
   final eventBox = Hive.box<EventModel>('events');
-  final articleBox = Hive.box<ArticleModel>('articles');
 
   // Seed Users jika belum ada
   if (userBox.isEmpty) {
-    // User Individu 1
     final user1 = UserModel(
       id: 'user_001',
       email: 'johndoe@example.com',
@@ -145,10 +141,9 @@ Future<void> seedDummyData() async {
       fullName: 'John Doe',
       nik: '3174012345670001',
       phone: '+62 812 3456 7890',
-      bio: 'Passionate about making a difference in the community. Let\'s connect and volunteer together!',
+      bio: 'Passionate about making a difference in the community.',
     );
 
-    // User Organisasi 1
     final org1 = UserModel(
       id: 'org_001',
       email: 'yayasan@cipta.org',
@@ -160,7 +155,6 @@ Future<void> seedDummyData() async {
       bio: 'Yayasan yang berfokus pada pendidikan dan kesejahteraan anak Indonesia.',
     );
 
-    // User Organisasi 2
     final org2 = UserModel(
       id: 'org_002',
       email: 'komunitas@peduli.id',
@@ -169,7 +163,7 @@ Future<void> seedDummyData() async {
       organizationName: 'Komunitas Peduli Lingkungan Jakarta',
       npwp: '02.345.678.9-012.000',
       phone: '+62 21 8765 4321',
-      bio: 'Komunitas yang bergerak di bidang pelestarian lingkungan dan edukasi masyarakat.',
+      bio: 'Komunitas yang bergerak di bidang pelestarian lingkungan.',
     );
 
     await userBox.add(user1);
@@ -181,150 +175,90 @@ Future<void> seedDummyData() async {
 
   // Seed Events jika belum ada
   if (eventBox.isEmpty) {
-    // Event 1: Bersih-bersih Pantai
     final event1 = EventModel(
       id: 'event_001',
       title: 'Aksi Bersih Pantai Ancol',
       description:
-          'Mari bergabung bersama kami dalam aksi bersih-bersih Pantai Ancol untuk menjaga kebersihan lingkungan dan kesehatan laut! Kegiatan ini bertujuan untuk mengurangi sampah plastik yang mencemari pantai dan laut.',
+          'Mari bergabung bersama kami dalam aksi bersih-bersih Pantai Ancol untuk menjaga kebersihan lingkungan dan kesehatan laut!',
       imageUrl: 'https://images.unsplash.com/photo-1618477461853-cf6ed80faba5?w=800',
       organizerId: 'org_002',
       organizerName: 'Komunitas Peduli Lingkungan Jakarta',
-      location: EventLocation(
+      location: EventLocationModel(
         country: 'Indonesia',
         province: 'DKI Jakarta',
         city: 'Jakarta Utara',
         district: 'Pademangan',
         village: 'Ancol',
-        rtRw: 'RT 011/RW 007',
         latitude: -6.1254,
         longitude: 106.8416,
       ),
-      eventStartTime: DateTime(2023, 11, 25, 1, 0), // UTC: 08:00 WIB
-      eventEndTime: DateTime(2023, 11, 25, 4, 0), // UTC: 11:00 WIB
+      eventStartTime: DateTime(2023, 11, 25, 1, 0), // UTC
+      eventEndTime: DateTime(2023, 11, 25, 4, 0),
       targetVolunteerCount: 100,
       currentVolunteerCount: 45,
       participationFeeIdr: 0,
       category: 'Lingkungan',
     );
 
-    // Event 2: Penanaman 1000 Pohon
     final event2 = EventModel(
       id: 'event_002',
       title: 'Aksi Tanam 1000 Pohon',
       description:
-          'Bergabunglah dalam gerakan penanaman 1000 pohon untuk kota hijau! Mari kita ciptakan lingkungan yang lebih sehat dan asri untuk generasi mendatang.',
+          'Bergabunglah dalam gerakan penanaman 1000 pohon untuk kota hijau!',
       imageUrl: 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=800',
       organizerId: 'org_002',
       organizerName: 'Komunitas Peduli Lingkungan Jakarta',
-      location: EventLocation(
+      location: EventLocationModel(
         country: 'Indonesia',
         province: 'Jawa Barat',
         city: 'Bandung',
         district: 'Lembang',
         village: 'Cikole',
-        rtRw: 'RT 003/RW 002',
         latitude: -6.8168,
         longitude: 107.6179,
       ),
-      eventStartTime: DateTime(2023, 12, 10, 2, 0), // UTC: 09:00 WIB
-      eventEndTime: DateTime(2023, 12, 10, 5, 0), // UTC: 12:00 WIB
+      eventStartTime: DateTime(2023, 12, 10, 2, 0),
+      eventEndTime: DateTime(2023, 12, 10, 5, 0),
       targetVolunteerCount: 150,
       currentVolunteerCount: 87,
       participationFeeIdr: 0,
       category: 'Lingkungan',
     );
 
-    // Event 3: Bantu Mengajar di Panti
     final event3 = EventModel(
       id: 'event_003',
       title: 'Bantu Mengajar di Panti Asuhan Kasih Bunda',
       description:
-          'Ayo berbagi ilmu dan kasih sayang dengan mengajar anak-anak di Panti Asuhan Kasih Bunda. Donasi Anda akan digunakan untuk membeli buku dan alat tulis.',
+          'Ayo berbagi ilmu dan kasih sayang dengan mengajar anak-anak di Panti Asuhan.',
       imageUrl: 'https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=800',
       organizerId: 'org_001',
       organizerName: 'Yayasan Cipta Asa',
-      location: EventLocation(
+      location: EventLocationModel(
         country: 'Indonesia',
         province: 'DKI Jakarta',
         city: 'Jakarta Selatan',
         district: 'Pasar Minggu',
         village: 'Jati Padang',
-        rtRw: 'RT 005/RW 003',
         latitude: -6.2989,
         longitude: 106.8411,
       ),
-      eventStartTime: DateTime(2023, 12, 1, 3, 0), // UTC: 10:00 WIB
-      eventEndTime: DateTime(2023, 12, 1, 8, 0), // UTC: 15:00 WIB
+      eventStartTime: DateTime(2023, 12, 1, 3, 0),
+      eventEndTime: DateTime(2023, 12, 1, 8, 0),
       targetVolunteerCount: 20,
       currentVolunteerCount: 12,
       participationFeeIdr: 50000,
       category: 'Pendidikan',
     );
 
-    // Event 4: Donor Darah Massal
-    final event4 = EventModel(
-      id: 'event_004',
-      title: 'Donasi Darah Massal di Balai Kota',
-      description:
-          'Kegiatan donor darah massal untuk membantu stok darah PMI. Setetes darah Anda dapat menyelamatkan nyawa!',
-      imageUrl: 'https://images.unsplash.com/photo-1615461066159-fea0960485d5?w=800',
-      organizerId: 'org_001',
-      organizerName: 'Yayasan Cipta Asa',
-      location: EventLocation(
-        country: 'Indonesia',
-        province: 'Jawa Barat',
-        city: 'Depok',
-        district: 'Beji',
-        village: 'Beji',
-        rtRw: 'RT 001/RW 001',
-        latitude: -6.3682,
-        longitude: 106.8316,
-      ),
-      eventStartTime: DateTime(2023, 12, 24, 2, 0), // UTC: 09:00 WIB
-      eventEndTime: DateTime(2023, 12, 24, 7, 0), // UTC: 14:00 WIB
-      targetVolunteerCount: 200,
-      currentVolunteerCount: 156,
-      participationFeeIdr: 0,
-      category: 'Kesehatan',
-    );
-
-    // Event 5: Bagi Takjil Ramadhan
-    final event5 = EventModel(
-      id: 'event_005',
-      title: 'Bagi Takjil Gratis Ramadhan',
-      description:
-          'Mari berbagi kebahagiaan di bulan Ramadhan dengan membagikan takjil gratis kepada masyarakat yang membutuhkan.',
-      imageUrl: 'https://images.unsplash.com/photo-1552566626-52f8b828add9?w=800',
-      organizerId: 'org_001',
-      organizerName: 'Yayasan Cipta Asa',
-      location: EventLocation(
-        country: 'Indonesia',
-        province: 'Banten',
-        city: 'Tangerang',
-        district: 'Ciledug',
-        village: 'Cipulir',
-        rtRw: 'RT 008/RW 004',
-        latitude: -6.2297,
-        longitude: 106.7160,
-      ),
-      eventStartTime: DateTime(2024, 4, 10, 9, 0), // UTC: 16:00 WIB
-      eventEndTime: DateTime(2024, 4, 10, 11, 0), // UTC: 18:00 WIB
-      targetVolunteerCount: 50,
-      currentVolunteerCount: 28,
-      participationFeeIdr: 0,
-      category: 'Sosial',
-    );
-
     await eventBox.add(event1);
     await eventBox.add(event2);
     await eventBox.add(event3);
-    await eventBox.add(event4);
-    await eventBox.add(event5);
 
-    print('✅ Seed Events completed: 5 events');
+    print('✅ Seed Events completed: 3 events');
   }
 
+  // ← ARTIKEL TIDAK DI-SEED, akan diambil dari API saat HomePage load
+  print('ℹ️  Articles will be fetched from API on HomePage load');
 }
 
 class MyApp extends StatelessWidget {
@@ -361,20 +295,16 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _checkSession() async {
-    // Delay untuk splash effect
     await Future.delayed(const Duration(seconds: 2));
 
     if (!mounted) return;
 
-    // Check apakah ada session
     final isLoggedIn = await _sessionService.isLoggedIn();
 
     if (isLoggedIn) {
-      // Validate session dan ambil user
       final user = await _sessionService.getCurrentUser();
 
       if (user != null) {
-        // Session valid, langsung ke MainScreen
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -382,7 +312,6 @@ class _SplashScreenState extends State<SplashScreen> {
           ),
         );
       } else {
-        // Session invalid, clear dan ke login
         await _sessionService.clearSession();
         Navigator.pushReplacement(
           context,
@@ -390,7 +319,6 @@ class _SplashScreenState extends State<SplashScreen> {
         );
       }
     } else {
-      // Tidak ada session, ke login
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const LoginPage()),

@@ -26,7 +26,7 @@ class _MainScreenState extends State<MainScreen> {
   void initState() {
     super.initState();
     _pages = [
-      HomePage(currentUser: widget.currentUser), // Beranda
+      HomePage(), // Beranda
       ActivityListPage(currentUser: widget.currentUser), // Cari
       // Aktivitas: different view for org vs individual
       widget.currentUser.isOrganization

@@ -24,7 +24,7 @@ class EventModelAdapter extends TypeAdapter<EventModel> {
       organizerId: fields[4] as String,
       organizerName: fields[5] as String,
       organizerImageUrl: fields[6] as String?,
-      location: fields[7] as EventLocation,
+      location: fields[7] as EventLocationModel,
       eventStartTime: fields[8] as DateTime,
       eventEndTime: fields[9] as DateTime,
       targetVolunteerCount: fields[10] as int,

@@ -6,32 +6,31 @@ part of 'event_location.dart';
 // TypeAdapterGenerator
 // **************************************************************************
 
-class EventLocationAdapter extends TypeAdapter<EventLocation> {
+class EventLocationModelAdapter extends TypeAdapter<EventLocationModel> {
   @override
   final int typeId = 2;
 
   @override
-  EventLocation read(BinaryReader reader) {
+  EventLocationModel read(BinaryReader reader) {
     final numOfFields = reader.readByte();
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
-    return EventLocation(
+    return EventLocationModel(
       country: fields[0] as String,
       province: fields[1] as String,
       city: fields[2] as String,
       district: fields[3] as String,
       village: fields[4] as String,
-      rtRw: fields[5] as String,
       latitude: fields[6] as double,
       longitude: fields[7] as double,
     );
   }
 
   @override
-  void write(BinaryWriter writer, EventLocation obj) {
+  void write(BinaryWriter writer, EventLocationModel obj) {
     writer
-      ..writeByte(8)
+      ..writeByte(7)
       ..writeByte(0)
       ..write(obj.country)
       ..writeByte(1)
@@ -42,8 +41,6 @@ class EventLocationAdapter extends TypeAdapter<EventLocation> {
       ..write(obj.district)
       ..writeByte(4)
       ..write(obj.village)
-      ..writeByte(5)
-      ..write(obj.rtRw)
       ..writeByte(6)
       ..write(obj.latitude)
       ..writeByte(7)
@@ -56,7 +53,7 @@ class EventLocationAdapter extends TypeAdapter<EventLocation> {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is EventLocationAdapter &&
+      other is EventLocationModelAdapter &&
           runtimeType == other.runtimeType &&
           typeId == other.typeId;
 }

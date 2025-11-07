@@ -1,8 +1,9 @@
+// pages/register_organization_page.dart
 import 'package:flutter/material.dart';
-import 'package:crypto/crypto.dart';
-import 'dart:convert';
-import 'package:hive/hive.dart';
+// import 'package:crypto/crypto.dart'; // DIHAPUS
+// import 'dart:convert'; // DIHAPUS
 import '../../models/user_model.dart';
+import '../../services/auth_service.dart'; // Import Service (ganti auth_service)
 
 class RegisterOrganizationPage extends StatefulWidget {
   const RegisterOrganizationPage({super.key});
@@ -18,6 +19,9 @@ class _RegisterOrganizationPageState extends State<RegisterOrganizationPage> {
   final _npwpController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  
+  final SupabaseAuthService _authService = SupabaseAuthService(); // Instance Service
+  
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
@@ -32,11 +36,7 @@ class _RegisterOrganizationPageState extends State<RegisterOrganizationPage> {
     super.dispose();
   }
 
-  String _hashPassword(String password) {
-    final bytes = utf8.encode(password);
-    final hash = sha256.convert(bytes);
-    return hash.toString();
-  }
+  // HAPUS FUNGSI _hashPassword LOKAL!
 
   Future<void> _register() async {
     if (!_formKey.currentState!.validate()) return;
@@ -44,28 +44,19 @@ class _RegisterOrganizationPageState extends State<RegisterOrganizationPage> {
     setState(() => _isLoading = true);
 
     try {
-      final userBox = Hive.box<UserModel>('users');
       final email = _emailController.text.trim().toLowerCase();
+      // KIRIM PASSWORD MENTAH, HASHING DILAKUKAN DI SERVICE
+      final password = _passwordController.text;
 
-      // Check email sudah terdaftar
-      for (var user in userBox.values) {
-        if (user.email.toLowerCase() == email) {
-          _showError('Email sudah terdaftar');
-          return;
-        }
-      }
-
-      // Buat user baru
-      final newUser = UserModel(
-        id: 'org_${DateTime.now().millisecondsSinceEpoch}',
+      // Panggil Service untuk Auth Lokal dan Sinkronisasi ID ke Supabase
+      final uid = await _authService.registerAndSyncId(
         email: email,
-        passwordHash: _hashPassword(_passwordController.text),
         userType: UserType.organization,
+        password: password, // Kirim password mentah
         organizationName: _organizationNameController.text.trim(),
         npwp: _npwpController.text.trim(),
+        // Semua field opsional lainnya (bio, phone, lat/lng) defaultnya null
       );
-
-      await userBox.add(newUser);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -78,7 +69,7 @@ class _RegisterOrganizationPageState extends State<RegisterOrganizationPage> {
         Navigator.pop(context);
       }
     } catch (e) {
-      _showError('Terjadi kesalahan: $e');
+      _showError(e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

@@ -1,9 +1,11 @@
+// pages/login_page.dart
 import 'package:flutter/material.dart';
-import 'package:crypto/crypto.dart';
-import 'dart:convert';
+// import 'package:crypto/crypto.dart'; // DIHAPUS
+// import 'dart:convert'; // DIHAPUS
 import 'package:hive/hive.dart';
 import '../../models/user_model.dart';
 import '../../services/session_service.dart';
+import '../../services/auth_service.dart'; // Diperbaiki, ganti auth_service
 import '../main_screen.dart';
 import 'register_individual_page.dart';
 import 'register_organization_page.dart';
@@ -20,6 +22,8 @@ class _LoginPageState extends State<LoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _sessionService = SessionService();
+  final SupabaseAuthService _authService = SupabaseAuthService(); // Instance service
+  
   bool _obscurePassword = true;
   bool _isLoading = false;
 
@@ -30,11 +34,7 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  String _hashPassword(String password) {
-    final bytes = utf8.encode(password);
-    final hash = sha256.convert(bytes);
-    return hash.toString();
-  }
+  // HAPUS FUNGSI _hashPassword LOKAL!
 
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
@@ -42,44 +42,26 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _isLoading = true);
 
     try {
-      final userBox = Hive.box<UserModel>('users');
-      final email = _emailController.text.trim().toLowerCase();
-      final passwordHash = _hashPassword(_passwordController.text);
+      final email = _emailController.text.trim();
+      final password = _passwordController.text;
 
-      // Cari user berdasarkan email
-      UserModel? foundUser;
-      for (var user in userBox.values) {
-        if (user.email.toLowerCase() == email) {
-          foundUser = user;
-          break;
-        }
-      }
-
-      if (foundUser == null) {
-        _showError('Email tidak terdaftar');
-        return;
-      }
-
-      // Verifikasi password
-      if (foundUser.passwordHash != passwordHash) {
-        _showError('Password salah');
-        return;
-      }
-
-      // Login berhasil - SAVE SESSION
-      await _sessionService.saveSession(foundUser.id);
+      // Panggil fungsi signInUser dari service
+      final foundUser = await _authService.signInUser(email, password);
+      
+      // Jika signInUser berhasil (tidak throw exception):
+      await _sessionService.saveSession(foundUser!.id);
 
       if (mounted) {
-        // Navigate dengan replacement agar tidak bisa back ke login
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => MainScreen(currentUser: foundUser!),
+            builder: (context) => MainScreen(currentUser: foundUser),
           ),
         );
       }
     } catch (e) {
-      _showError('Terjadi kesalahan: $e');
+      // Tangkap pesan error dari service (seperti 'Email atau kata sandi salah')
+      _showError(e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

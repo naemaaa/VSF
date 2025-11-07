@@ -1,15 +1,17 @@
+// create_event_page.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';  
 import 'package:path_provider/path_provider.dart';
 import 'package:hive/hive.dart';
 import 'package:latlong2/latlong.dart';
-import '../../widgets/location_picker.dart';
 import 'package:geocoding/geocoding.dart';
+import '../../widgets/location_picker.dart'; 
 import '../../models/event_model.dart';
 import '../../models/event_location.dart';
 import '../../models/user_model.dart';
 import '../../services/location_service.dart';
+import '../../services/event_service.dart'; 
 
 class CreateEventPage extends StatefulWidget {
   final UserModel currentUser;
@@ -22,13 +24,54 @@ class CreateEventPage extends StatefulWidget {
 }
 
 class _CreateEventPageState extends State<CreateEventPage> {
+  final EventService _eventService = EventService();
   LatLng? _selectedLocation;
   final LocationService _locationService = LocationService();
+
+  final _formKey = GlobalKey<FormState>();
+  final _titleController = TextEditingController();
+  final _descController = TextEditingController();
+  final _targetVolunteerController = TextEditingController(text: '50');
+  final _feeController = TextEditingController();
+  final _districtController = TextEditingController();
+  final _villageController = TextEditingController();
+
+  String? _selectedCategory;
+  String? _selectedCountry;
+  String? _selectedProvince;
+  String? _selectedCity;
+  DateTime? _startDateTime;
+  DateTime? _endDateTime;
+  File? _pickedImage;
+  
+  bool _isSubmitting = false; // Loading state
+  bool _isManualAddressDisabled = false; // State untuk menonaktifkan field manual
+  
+  // List data (dipertahankan)
+  final List<String> _categories = [
+    'Pendidikan', 'Lingkungan', 'Kesehatan', 'Sosial', 'Anak-anak'
+  ];
+  final List<String> _countries = ['Indonesia'];
+  final List<String> _provinces = [
+    'DKI Jakarta', 'Jawa Barat', 'Jawa Tengah', 'Jawa Timur', 'Banten', 
+    'Aceh', 'Sumatera Utara', 'Sumatera Barat', 'Riau', 'Jambi', 'Sumatera Selatan',
+    'Kalimantan Barat', 'Kalimantan Tengah', 'Kalimantan Selatan', 'Kalimantan Timur', 'Kalimantan Utara',
+    'Sulawesi Utara', 'Sulawesi Tengah', 'Sulawesi Selatan', 'Sulawesi Tenggara', 'Gorontalo', 'Sulawesi Barat',
+    'Maluku', 'Maluku Utara', 'Papua', 'Papua Barat', 'Papua Tengah', 'Papua Pegunungan',
+    'Nusa Tenggara Barat', 'Nusa Tenggara Timur', 'Yogyakarta', 'Bengkulu', 'Kepulauan Riau',
+  ];
+  final Map<String, List<String>> _citiesByProvince = {
+    'DKI Jakarta': ['Jakarta Pusat', 'Jakarta Barat', 'Jakarta Timur', 'Jakarta Selatan', 'Jakarta Utara'],
+    'Jawa Barat': ['Bandung', 'Bekasi', 'Bogor', 'Depok', 'Cimahi', 'Tasikmalaya'],
+    'Jawa Tengah': ['Semarang', 'Surakarta', 'Magelang', 'Pekalongan', 'Tegal'],
+    'Jawa Timur': ['Surabaya', 'Malang', 'Kediri', 'Blitar', 'Pasuruan'],
+    'Banten': ['Tangerang', 'Serang', 'Cilegon', 'Pandeglang', 'Lebak'],
+    'Yogyakarta': ['Yogyakarta', 'Sleman', 'Bantul', 'Gunungkidul', 'Kulon Progo'],
+  };
 
   @override
   void initState() {
     super.initState();
-    // If editing existing event, prefill fields
     if (widget.existingEvent != null) {
       final e = widget.existingEvent!;
       _titleController.text = e.title;
@@ -39,253 +82,72 @@ class _CreateEventPageState extends State<CreateEventPage> {
       _selectedCity = e.location.city.isNotEmpty ? e.location.city : null;
       _districtController.text = e.location.district;
       _villageController.text = e.location.village;
-      _rtRwController.text = e.location.rtRw;
-      // stored as UTC in model; convert to local for editing UI
       _startDateTime = e.eventStartTime.toLocal();
       _endDateTime = e.eventEndTime.toLocal();
       _targetVolunteerController.text = e.targetVolunteerCount.toString();
       _feeController.text = e.participationFeeIdr == 0 ? '' : e.participationFeeIdr.toString();
-      if (e.imageUrl != null && e.imageUrl!.isNotEmpty) {
+      
+      if (e.imageUrl != null && e.imageUrl!.isNotEmpty && !e.imageUrl!.startsWith('http')) {
         try {
           _pickedImage = File(e.imageUrl!);
         } catch (_) {}
       }
-      // Set initial map location if coordinates exist
+      
       if (e.location.latitude != 0 && e.location.longitude != 0) {
         _selectedLocation = LatLng(e.location.latitude, e.location.longitude);
+        _isManualAddressDisabled = true; // Non-aktifkan jika lokasi sudah ada
       }
     }
   }
 
-  final _formKey = GlobalKey<FormState>();
-  final _titleController = TextEditingController();
-  final _descController = TextEditingController();
-  final _targetVolunteerController = TextEditingController(text: '50');
-  final _feeController = TextEditingController();
-  final _districtController = TextEditingController();
-  final _villageController = TextEditingController();
-  final _rtRwController = TextEditingController();
-
-  String? _selectedCategory;
-  String? _selectedCountry;
-  String? _selectedProvince;
-  String? _selectedCity;
-  DateTime? _startDateTime;
-  DateTime? _endDateTime;
-  File? _pickedImage;
-
   Future<void> _handleMapTap(LatLng position) async {
-    setState(() => _selectedLocation = position);
+    setState(() {
+      _selectedLocation = position;
+      _isManualAddressDisabled = true; // Aktifkan penonaktifan field manual
+    });
+    
     try {
-      // Get address details from coordinates
       final placemarks = await placemarkFromCoordinates(
         position.latitude,
         position.longitude,
       );
+      
       if (placemarks.isNotEmpty) {
         final place = placemarks.first;
+        
+        // Update controllers
         _districtController.text = place.subLocality ?? '';
         _villageController.text = place.locality ?? '';
-        _rtRwController.text = (place.street ?? '').replaceAll(RegExp(r'[^0-9/]'), '');
-        // Update dropdowns if values found
-        final province = place.administrativeArea;
-        if (province != null && _provinces.contains(province)) {
-          setState(() {
+
+        // Update dropdown states
+        setState(() {
+          final province = place.administrativeArea;
+          if (province != null && _provinces.contains(province)) {
             _selectedProvince = province;
             _selectedCity = null;
-          });
-        }
-        final city = place.subAdministrativeArea;
-        if (city != null && (_citiesByProvince[_selectedProvince] ?? []).contains(city)) {
-          setState(() => _selectedCity = city);
-        }
+          }
+          
+          final city = place.subAdministrativeArea;
+          if (city != null && (_citiesByProvince[_selectedProvince] ?? []).contains(city)) {
+            _selectedCity = city;
+          }
+        });
       }
     } catch (e) {
       print('Error getting address: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Gagal mendapatkan detail alamat dari peta.')),
+        );
+      }
     }
   }
-
-  final List<String> _categories = [
-    'Pendidikan', 'Lingkungan', 'Kesehatan', 'Sosial', 'Anak-anak'
-  ];
-  final List<String> _countries = ['Indonesia'];
-  final List<String> _provinces = [
-    // Jawa (5)
-    'DKI Jakarta', 'Jawa Barat', 'Jawa Tengah', 'Jawa Timur', 'Banten',
-    
-    // Sumatera (6)
-    'Aceh', 'Sumatera Utara', 'Sumatera Barat', 'Riau', 'Jambi', 'Sumatera Selatan',
-    
-    // Kalimantan (5)
-    'Kalimantan Barat', 'Kalimantan Tengah', 'Kalimantan Selatan', 'Kalimantan Timur', 'Kalimantan Utara',
-    
-    // Sulawesi (6)
-    'Sulawesi Utara', 'Sulawesi Tengah', 'Sulawesi Selatan', 'Sulawesi Tenggara', 'Gorontalo', 'Sulawesi Barat',
-    
-    // Papua & Maluku (6)
-    'Maluku', 'Maluku Utara', 'Papua', 'Papua Barat', 'Papua Tengah', 'Papua Pegunungan',
-    
-    // Nusa Tenggara (2)
-    'Nusa Tenggara Barat', 'Nusa Tenggara Timur',
-    
-    // Lainnya (3)
-    'Yogyakarta', 'Bengkulu', 'Kepulauan Riau',
-  ];
-  final Map<String, List<String>> _citiesByProvince = {
-  // Jawa (5)
-  'DKI Jakarta': [
-    'Jakarta Pusat', 'Jakarta Barat', 'Jakarta Timur', 'Jakarta Selatan', 'Jakarta Utara'
-  ],
-  'Jawa Barat': [
-    'Bandung', 'Bekasi', 'Bogor', 'Depok', 'Cimahi', 'Tasikmalaya', 'Cianjur', 
-    'Sukabumi', 'Garut', 'Purwakarta', 'Karawang', 'Subang', 'Indramayu'
-  ],
-  'Jawa Tengah': [
-    'Semarang', 'Surakarta', 'Magelang', 'Pekalongan', 'Tegal', 'Kudus', 
-    'Salatiga', 'Wonosobo', 'Purwokerto', 'Klaten', 'Wonogiri'
-  ],
-  'Jawa Timur': [
-    'Surabaya', 'Malang', 'Kediri', 'Blitar', 'Pasuruan', 'Probolinggo', 
-    'Mojokerto', 'Madiun', 'Batu', 'Gresik', 'Tuban', 'Sidoarjo', 'Lamongan'
-  ],
-  'Banten': [
-    'Tangerang', 'Serang', 'Cilegon', 'Pandeglang', 'Lebak'
-  ],
-
-  // Sumatera (6)
-  'Aceh': [
-    'Banda Aceh', 'Sabang', 'Lhokseumawe', 'Langsa', 'Meulaboh', 'Takengon',
-    'Aceh Besar', 'Pidie', 'Aceh Utara', 'Aceh Timur', 'Aceh Tengah'
-  ],
-  'Sumatera Utara': [
-    'Medan', 'Binjai', 'Deli Serdang', 'Karo', 'Langkat', 'Asahan',
-    'Labuhanbatu', 'Tapanuli Utara', 'Tapanuli Tengah', 'Tapanuli Selatan', 'Mandailing Natal'
-  ],
-  'Sumatera Barat': [
-    'Padang', 'Bukittinggi', 'Payakumbuh', 'Sawahlunto', 'Padang Panjang',
-    'Agam', 'Lima Puluh Kota', 'Pasaman', 'Solok', 'Tanah Datar'
-  ],
-  'Riau': [
-    'Pekanbaru', 'Dumai', 'Siak', 'Kampar', 'Rohul', 'Indragiri Hilir',
-    'Indragiri Hulu', 'Kuantan Singingi', 'Pelalawan', 'Rokan Hilir', 'Rokan Hulu'
-  ],
-  'Jambi': [
-    'Jambi', 'Sungai Penuh', 'Kerinci', 'Merangin', 'Bungo', 'Tebo',
-    'Muara Jambi', 'Muara Bulian', 'Muara Tebo', 'Sarolangun'
-  ],
-  'Sumatera Selatan': [
-    'Palembang', 'Prabumulih', 'Lubuklinggau', 'Musi Banyu Asin', 'Musi Rawas',
-    'Banyuasin', 'Ogan Ilir', 'Ogan Komering Ilir', 'Ogan Komering Ulu', 'Lahat'
-  ],
-
-  // Kalimantan (5)
-  'Kalimantan Barat': [
-    'Pontianak', 'Singkawang', 'Sambas', 'Bengkayang', 'Landak', 'Mempawah',
-    'Kubu Raya', 'Sanggau', 'Sekadau', 'Kapuas Hulu', 'Sintang'
-  ],
-  'Kalimantan Tengah': [
-    'Palangka Raya', 'Kapuas', 'Barito Utara', 'Barito Timur', 'Katingan',
-    'Kotawaringin Barat', 'Kotawaringin Timur', 'Lamandau', 'Seruyan', 'Sukamara'
-  ],
-  'Kalimantan Selatan': [
-    'Banjarmasin', 'Banjarbaru', 'Banjar', 'Barito Kuala', 'Hulu Sungai Utara',
-    'Hulu Sungai Selatan', 'Hulu Sungai Tengah', 'Tabalong', 'Tanah Laut', 'Tapin'
-  ],
-  'Kalimantan Timur': [
-    'Samarinda', 'Balikpapan', 'Bontang', 'Kutai Kartanegara', 'Paser',
-    'Kutai Barat', 'Berau', 'Penajam Paser Utara'
-  ],
-  'Kalimantan Utara': [
-    'Tarakan', 'Tanjung Selor', 'Malinau', 'Nunukan', 'Bulungan'
-  ],
-
-  // Sulawesi (6)
-  'Sulawesi Utara': [
-    'Manado', 'Bitung', 'Tomohon', 'Minahasa', 'Minahasa Utara', 'Minahasa Selatan',
-    'Minahasa Tenggara', 'Bolaang Mongondow', 'Bolaang Mongondow Utara', 'Bolaang Mongondow Selatan'
-  ],
-  'Sulawesi Tengah': [
-    'Palu', 'Mantikulore', 'Donggala', 'Banggai Kepulauan', 'Banggai', 'Morowali',
-    'Morowali Utara', 'Parigi Moutong', 'Poso', 'Sigi', 'Tojo Una-Una'
-  ],
-  'Sulawesi Selatan': [
-    'Makassar', 'Parepare', 'Palopo', 'Gowa', 'Takalar', 'Jeneponto', 'Bantaeng',
-    'Barru', 'Bone', 'Bulukumba', 'Enrekang', 'Luwu', 'Luwu Timur', 'Luwu Utara',
-    'Maros', 'Pangkajene Kepulauan', 'Pinrang', 'Sidenreng Rappang', 'Sinjai', 'Soppeng', 'Toraja Utara'
-  ],
-  'Sulawesi Tenggara': [
-    'Kendari', 'Baubau', 'Bombana', 'Buton', 'Buton Selatan', 'Buton Tengah',
-    'Buton Utara', 'Kolaka', 'Kolaka Timur', 'Kolaka Utara', 'Konawe', 'Konawe Kepulauan',
-    'Konawe Selatan', 'Konawe Utara', 'Muna', 'Muna Barat', 'Wakatobi'
-  ],
-  'Gorontalo': [
-    'Gorontalo', 'Tilamuta', 'Boalemo', 'Bone Bolango', 'Gorontalo Utara', 'Pohuwato'
-  ],
-  'Sulawesi Barat': [
-    'Mamuju', 'Manado', 'Majene', 'Mamasa', 'Mamuju Utara', 'Mamuju Tengah', 'Polewali Mandar'
-  ],
-
-  // Papua & Maluku (6)
-  'Maluku': [
-    'Ambon', 'Tual', 'Bula', 'Amahai', 'Masohi', 'Manipa', 'Seram Barat',
-    'Seram Timur', 'Maluku Barat Daya', 'Maluku Tenggara', 'Maluku Tenggara Barat'
-  ],
-  'Maluku Utara': [
-    'Ternate', 'Tidore', 'Sofifi', 'Halmahera Barat', 'Halmahera Tengah', 'Halmahera Timur',
-    'Halmahera Utara', 'Halmahera Selatan', 'Pulau Morotai', 'Pulau Taliabu'
-  ],
-  'Papua': [
-    'Jayapura', 'Wamena', 'Lembah Baliem', 'Merauke', 'Biak', 'Sorong',
-    'Mimika', 'Jayawijaya', 'Asmat', 'Yapen Waropen'
-  ],
-  'Papua Barat': [
-    'Manokwari', 'Sorong', 'Fakfak', 'Kaimana', 'Teluk Bintuni', 'Teluk Wondama'
-  ],
-  'Papua Tengah': [
-    'Tiom', 'Kasonaweja', 'Mamberamo Raya', 'Mamberamo Tengah'
-  ],
-  'Papua Pegunungan': [
-    'Wamena', 'Oksibil', 'Tiom', 'Dekai'
-  ],
-
-  // Nusa Tenggara (2)
-  'Nusa Tenggara Barat': [
-    'Mataram', 'Bima', 'Dompu', 'Lombok Barat', 'Lombok Tengah', 'Lombok Timur',
-    'Lombok Utara', 'Sumbawa', 'Sumbawa Barat', 'Sumbawa Timur'
-  ],
-  'Nusa Tenggara Timur': [
-    'Kupang', 'Maumere', 'Ende', 'Belu', 'Flores Timur', 'Kupang', 'Lembata',
-    'Manggarai', 'Manggarai Barat', 'Manggarai Timur', 'Nagekeo', 'Ngada',
-    'Rote Ndao', 'Sabu Raijua', 'Sikka', 'Sumba Barat', 'Sumba Timur'
-  ],
-
-  // Lainnya (3)
-  'Yogyakarta': [
-    'Yogyakarta', 'Sleman', 'Bantul', 'Gunungkidul', 'Kulon Progo'
-  ],
-  'Bengkulu': [
-    'Bengkulu', 'Curup', 'Lebong', 'Muko-Muko', 'Rejang Lebong', 'Bengkulu Utara',
-    'Bengkulu Selatan', 'Kaur', 'Seluma'
-  ],
-  'Kepulauan Riau': [
-    'Tanjung Pinang', 'Batam', 'Bintan', 'Karimun', 'Anambas', 'Lingga', 'Natuna'
-  ],
-};
 
   Future<void> _pickImage() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
     if (picked != null) {
-      try {
-        final appDir = await getApplicationDocumentsDirectory();
-        final imagesDir = Directory('${appDir.path}/vsf_images');
-        if (!await imagesDir.exists()) await imagesDir.create(recursive: true);
-        final fileName = '${DateTime.now().millisecondsSinceEpoch}_${picked.name}';
-        final saved = await File(picked.path).copy('${imagesDir.path}/$fileName');
-        setState(() => _pickedImage = saved);
-      } catch (e) {
-        setState(() => _pickedImage = File(picked.path));
-      }
+      setState(() => _pickedImage = File(picked.path));
     }
   }
 
@@ -298,11 +160,13 @@ class _CreateEventPageState extends State<CreateEventPage> {
       lastDate: DateTime(now.year + 2),
     );
     if (date == null) return;
+    
     final time = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.now(),
     );
     if (time == null) return;
+    
     final dt = DateTime(date.year, date.month, date.day, time.hour, time.minute);
     setState(() {
       if (isStart) {
@@ -314,313 +178,385 @@ class _CreateEventPageState extends State<CreateEventPage> {
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate() || _startDateTime == null || _endDateTime == null) return;
+    if (!_formKey.currentState!.validate() || 
+        _startDateTime == null || 
+        _endDateTime == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Mohon lengkapi semua field')),
+      );
+      return;
+    }
 
-    final eventBox = Hive.box<EventModel>('events');
-    final id = widget.existingEvent?.id ?? DateTime.now().millisecondsSinceEpoch.toString();
-    final location = EventLocation(
+    if (_selectedLocation == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Mohon pilih lokasi di peta')),
+      );
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+
+    final isNewEvent = widget.existingEvent == null;
+    final id = widget.existingEvent?.id ?? 
+        'event_${DateTime.now().millisecondsSinceEpoch}';
+    
+    // 1. Buat EventLocationModel
+    final location = EventLocationModel(
       country: _selectedCountry ?? '',
       province: _selectedProvince ?? '',
       city: _selectedCity ?? '',
       district: _districtController.text,
       village: _villageController.text,
-      rtRw: _rtRwController.text,
-      latitude: _selectedLocation?.latitude ?? 0,
-      longitude: _selectedLocation?.longitude ?? 0,
+      latitude: _selectedLocation!.latitude,
+      longitude: _selectedLocation!.longitude,
     );
-    final imagePath = _pickedImage?.path ?? widget.existingEvent?.imageUrl;
-    final event = EventModel(
+
+    // 2. Buat EventModel
+    final eventToSubmit = EventModel(
       id: id,
       title: _titleController.text,
       description: _descController.text,
-      imageUrl: imagePath,
+      // Jika edit dan tidak ada gambar baru, imageUrl dari existingEvent akan digunakan di service
+      imageUrl: widget.existingEvent?.imageUrl, 
       organizerId: widget.currentUser.id,
-      organizerName: widget.currentUser.fullName ?? widget.currentUser.organizationName ?? '-',
+      organizerName: widget.currentUser.fullName ?? 
+                     widget.currentUser.organizationName ?? '-',
       organizerImageUrl: widget.currentUser.profileImagePath,
       location: location,
       eventStartTime: _startDateTime!.toUtc(),
       eventEndTime: _endDateTime!.toUtc(),
       targetVolunteerCount: int.tryParse(_targetVolunteerController.text) ?? 0,
-      currentVolunteerCount: 0,
+      currentVolunteerCount: widget.existingEvent?.currentVolunteerCount ?? 0,
       participationFeeIdr: int.tryParse(_feeController.text) ?? 0,
       category: _selectedCategory ?? '',
       isActive: true,
-      createdAt: DateTime.now(),
+      createdAt: widget.existingEvent?.createdAt ?? DateTime.now().toUtc(),
+      registeredVolunteerIds: widget.existingEvent?.registeredVolunteerIds ?? [],
     );
-    if (widget.existingEvent != null) {
-      final existing = widget.existingEvent!;
-      existing.title = event.title;
-      existing.description = event.description;
-      existing.imageUrl = event.imageUrl;
-      existing.location = event.location;
-      existing.eventStartTime = event.eventStartTime;
-      existing.eventEndTime = event.eventEndTime;
-      existing.targetVolunteerCount = event.targetVolunteerCount;
-      existing.participationFeeIdr = event.participationFeeIdr;
-      existing.category = event.category;
-      existing.save();
-    } else {
-      await eventBox.put(id, event);
+
+    File? fileToUpload;
+    if (_pickedImage != null) {
+      fileToUpload = _pickedImage;
     }
-    if (mounted) Navigator.pop(context, true);
+
+    // 4. Call API
+    EventModel? resultEvent;
+    if (isNewEvent) {
+      await _eventService.createEvent(eventToSubmit, fileToUpload);
+      resultEvent = eventToSubmit; // misal mau pakai event yang sama aja
+    } else {
+      await _eventService.updateEvent(eventToSubmit, fileToUpload);
+      resultEvent = eventToSubmit; // misal mau pakai event yang sama aja
+
+    }
+    
+    setState(() => _isSubmitting = false);
+    
+    // 5. Handle result
+    if (resultEvent != null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${isNewEvent ? 'Kegiatan berhasil didaftarkan' : 'Kegiatan berhasil diperbarui'}!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context, true);
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Gagal menyimpan kegiatan. Pastikan API Key dan RLS sudah benar!'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Daftarkan Kegiatan Baru'),
+        title: Text(widget.existingEvent == null 
+            ? 'Daftarkan Kegiatan Baru' 
+            : 'Edit Kegiatan'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
+          onPressed: _isSubmitting ? null : () => Navigator.pop(context),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Judul Kegiatan'),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _titleController,
-                decoration: const InputDecoration(
-                  hintText: 'Contoh: Aksi Bersih Pantai Ancol',
-                  border: OutlineInputBorder(),
+      body: AbsorbPointer(
+        absorbing: _isSubmitting,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Judul Kegiatan', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _titleController,
+                  decoration: const InputDecoration(
+                    hintText: 'Contoh: Aksi Bersih Pantai Ancol',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (v) => v == null || v.isEmpty ? 'Judul wajib diisi' : null,
                 ),
-                validator: (v) => v == null || v.isEmpty ? 'Judul wajib diisi' : null,
-              ),
-              const SizedBox(height: 16),
-              const Text('Deskripsi Kegiatan'),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _descController,
-                minLines: 3,
-                maxLines: 5,
-                decoration: const InputDecoration(
-                  hintText: 'Jelaskan tujuan dan tugas volunteer secara rinci',
-                  border: OutlineInputBorder(),
+                const SizedBox(height: 16),
+                
+                const Text('Deskripsi Kegiatan', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _descController,
+                  minLines: 3,
+                  maxLines: 5,
+                  decoration: const InputDecoration(
+                    hintText: 'Jelaskan tujuan dan tugas volunteer',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (v) => v == null || v.isEmpty ? 'Deskripsi wajib diisi' : null,
                 ),
-                validator: (v) => v == null || v.isEmpty ? 'Deskripsi wajib diisi' : null,
-              ),
-              const SizedBox(height: 16),
-              const Text('Unggah Gambar Kegiatan'),
-              const SizedBox(height: 8),
-              GestureDetector(
-                onTap: _pickImage,
-                child: DottedBorder(
-                  color: Colors.grey,
-                  strokeWidth: 1,
-                  dashPattern: const [6, 3],
-                  borderType: BorderType.RRect,
-                  radius: const Radius.circular(12),
+                const SizedBox(height: 16),
+                
+                const Text('Unggah Gambar Kegiatan', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                GestureDetector(
+                  onTap: _pickImage,
                   child: Container(
-                    height: 120,
+                    height: 150,
                     width: double.infinity,
-                    alignment: Alignment.center,
-                    child: _pickedImage == null
-                        ? const Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.cloud_upload_outlined, size: 40, color: Colors.grey),
-                              SizedBox(height: 8),
-                              Text('Unggah file atau seret dan lepas\nPNG, JPG, GIF hingga 10MB',
-                                  textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
-                            ],
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey, style: BorderStyle.solid),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: _pickedImage != null
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.file(_pickedImage!, fit: BoxFit.cover),
                           )
-                        : Image.file(_pickedImage!, height: 100),
+                        : widget.existingEvent?.imageUrl != null && 
+                          widget.existingEvent!.imageUrl!.startsWith('http')
+                            ? ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: Image.network(
+                                  widget.existingEvent!.imageUrl!,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (c, o, s) => _imagePlaceholder(),
+                                ),
+                              )
+                            : _imagePlaceholder(),
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              const Text('Kategori'),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                initialValue: _selectedCategory,
-                items: _categories
-                    .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                    .toList(),
-                onChanged: (v) => setState(() => _selectedCategory = v),
-                decoration: const InputDecoration(border: OutlineInputBorder()),
-                validator: (v) => v == null ? 'Pilih kategori' : null,
-              ),
-              const SizedBox(height: 16),
-              const Text('Lokasi', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                initialValue: _selectedCountry,
-                items: _countries.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
-                onChanged: (v) => setState(() => _selectedCountry = v),
-                decoration: const InputDecoration(
-                  hintText: 'Pilih Negara',
-                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
+                const SizedBox(height: 16),
+                
+                const Text('Kategori', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  initialValue: _selectedCategory,
+                  items: _categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                  onChanged: (v) => setState(() => _selectedCategory = v),
+                  decoration: const InputDecoration(border: OutlineInputBorder()),
+                  validator: (v) => v == null ? 'Pilih kategori' : null,
                 ),
-                validator: (v) => v == null ? 'Pilih negara' : null,
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: _selectedProvince,
-                items: _provinces.map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
-                onChanged: (v) {
-                  setState(() {
-                    _selectedProvince = v;
-                    _selectedCity = null;
-                  });
-                },
-                decoration: const InputDecoration(
-                  hintText: 'Pilih Provinsi',
-                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
+                const SizedBox(height: 16),
+                
+                const Text('Lokasi', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: _selectedCountry,
+                  items: _countries.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                  onChanged: (v) => setState(() => _selectedCountry = v),
+                  decoration: const InputDecoration(hintText: 'Negara', border: OutlineInputBorder()),
+                  validator: (v) => v == null ? 'Pilih negara' : null,
                 ),
-                validator: (v) => v == null ? 'Pilih provinsi' : null,
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: _selectedCity,
-                items: (_citiesByProvince[_selectedProvince] ?? [])
-                    .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                    .toList(),
-                onChanged: (v) => setState(() => _selectedCity = v),
-                decoration: const InputDecoration(
-                  hintText: 'Pilih Kota/Kabupaten',
-                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: _selectedProvince,
+                  items: _provinces.map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
+                  onChanged: (v) {
+                    setState(() {
+                      _selectedProvince = v;
+                      _selectedCity = null;
+                    });
+                  },
+                  decoration: const InputDecoration(hintText: 'Provinsi', border: OutlineInputBorder()),
+                  validator: (v) => v == null ? 'Pilih provinsi' : null,
                 ),
-                validator: (v) => v == null ? 'Pilih kota/kabupaten' : null,
-              ),
-              const SizedBox(height: 16),
-              const Text('Pilih Lokasi di Peta', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
-              const SizedBox(height: 8),
-              LocationPicker(
-                initialLocation: _selectedLocation,
-                onLocationPicked: _handleMapTap,
-                selectedCity: _selectedCity,
-                selectedProvince: _selectedProvince,
-              ),
-              if (_selectedLocation != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    'Koordinat: ${_selectedLocation!.latitude.toStringAsFixed(6)}, ${_selectedLocation!.longitude.toStringAsFixed(6)}',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: _selectedCity,
+                  items: (_citiesByProvince[_selectedProvince] ?? [])
+                      .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                      .toList(),
+                  onChanged: (v) => setState(() => _selectedCity = v),
+                  decoration: const InputDecoration(hintText: 'Kota/Kabupaten', border: OutlineInputBorder()),
+                  validator: (v) => v == null ? 'Pilih kota' : null,
+                ),
+                const SizedBox(height: 16),
+                
+                const Text('Pilih Lokasi di Peta', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                LocationPicker(
+                  initialLocation: _selectedLocation,
+                  onLocationPicked: _handleMapTap,
+                  selectedCity: _selectedCity,
+                  selectedProvince: _selectedProvince,
+                ),
+                if (_selectedLocation != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      'Lat: ${_selectedLocation!.latitude.toStringAsFixed(6)}, Lng: ${_selectedLocation!.longitude.toStringAsFixed(6)}',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    ),
+                  ),
+                const SizedBox(height: 16),
+                
+                const Text('Detail Alamat', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                
+                TextFormField(
+                  controller: _districtController,
+                  decoration: InputDecoration(
+                    hintText: 'Kecamatan', 
+                    border: const OutlineInputBorder(),
+                    filled: _isManualAddressDisabled,
+                    fillColor: Colors.grey[100],
+                  ),
+                  validator: (v) => v == null || v.isEmpty ? 'Kecamatan wajib diisi' : null,
+                  enabled: !_isManualAddressDisabled, // Disabled jika dipilih di peta
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _villageController,
+                  decoration: InputDecoration(
+                    hintText: 'Desa/Kelurahan', 
+                    border: const OutlineInputBorder(),
+                    filled: _isManualAddressDisabled,
+                    fillColor: Colors.grey[100],
+                  ),
+                  validator: (v) => v == null || v.isEmpty ? 'Desa/Kelurahan wajib diisi' : null,
+                  enabled: !_isManualAddressDisabled, // Disabled jika dipilih di peta
+                ),
+                const SizedBox(height: 8),
+                
+
+                const SizedBox(height: 16),
+                const Text('Tanggal & Waktu Mulai', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                InkWell(
+                  onTap: () => _pickDateTime(isStart: true),
+                  child: InputDecorator(
+                    decoration: const InputDecoration(border: OutlineInputBorder()),
+                    child: Text(_startDateTime == null
+                        ? 'Pilih tanggal & waktu mulai'
+                        : '${_startDateTime!.toLocal()}'.split('.').first.replaceAll('T', ' ')),
                   ),
                 ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _districtController,
-                decoration: const InputDecoration(hintText: 'Kecamatan', border: OutlineInputBorder()),
-                validator: (v) => v == null || v.isEmpty ? 'Kecamatan wajib diisi' : null,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _villageController,
-                decoration: const InputDecoration(hintText: 'Desa/Kelurahan', border: OutlineInputBorder()),
-                validator: (v) => v == null || v.isEmpty ? 'Desa/Kelurahan wajib diisi' : null,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _rtRwController,
-                decoration: const InputDecoration(hintText: 'RT/RW', border: OutlineInputBorder()),
-                validator: (v) => v == null || v.isEmpty ? 'RT/RW wajib diisi' : null,
-              ),
-              const SizedBox(height: 16),
-              const Text('Tanggal & Waktu Mulai'),
-              const SizedBox(height: 8),
-              InkWell(
-                onTap: () => _pickDateTime(isStart: true),
-                child: InputDecorator(
-                  decoration: const InputDecoration(border: OutlineInputBorder(), hintText: 'mm/dd/yyyy, --:-- --'),
-                  child: Text(_startDateTime == null
-                      ? ''
-                      : '${_startDateTime!.toLocal()}'.split('.').first.replaceAll('T', ' ')),
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text('Tanggal & Waktu Selesai'),
-              const SizedBox(height: 8),
-              InkWell(
-                onTap: () => _pickDateTime(isStart: false),
-                child: InputDecorator(
-                  decoration: const InputDecoration(border: OutlineInputBorder(), hintText: 'mm/dd/yyyy, --:-- --'),
-                  child: Text(_endDateTime == null
-                      ? ''
-                      : '${_endDateTime!.toLocal()}'.split('.').first.replaceAll('T', ' ')),
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text('Target Jumlah Volunteer'),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _targetVolunteerController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(prefixIcon: Icon(Icons.people), border: OutlineInputBorder()),
-                validator: (v) => v == null || v.isEmpty ? 'Target volunteer wajib diisi' : null,
-              ),
-              const SizedBox(height: 16),
-              const Text('Harga Partisipasi (Rp)'),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _feeController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  prefixText: 'Rp ',
-                  hintText: 'Kosongkan jika gratis',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _submit,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue[600],
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                const SizedBox(height: 16),
+                
+                const Text('Tanggal & Waktu Selesai', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                InkWell(
+                  onTap: () => _pickDateTime(isStart: false),
+                  child: InputDecorator(
+                    decoration: const InputDecoration(border: OutlineInputBorder()),
+                    child: Text(_endDateTime == null
+                        ? 'Pilih tanggal & waktu selesai'
+                        : '${_endDateTime!.toLocal()}'.split('.').first.replaceAll('T', ' ')),
                   ),
-                  child: const Text('Daftarkan Kegiatan', style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
-              ),
-            ],
+                const SizedBox(height: 16),
+                
+                const Text('Target Jumlah Volunteer', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _targetVolunteerController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.people),
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (v) => v == null || v.isEmpty ? 'Target volunteer wajib diisi' : null,
+                ),
+                const SizedBox(height: 16),
+                
+                const Text('Harga Partisipasi (Rp)', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _feeController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    prefixText: 'Rp ',
+                    hintText: 'Kosongkan jika gratis',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _isSubmitting ? null : _submit,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue[600],
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      disabledBackgroundColor: Colors.grey[400],
+                    ),
+                    child: _isSubmitting
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : Text(
+                            widget.existingEvent == null 
+                                ? 'Daftarkan Kegiatan' 
+                                : 'Simpan Perubahan',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
-}
 
-class DottedBorder extends StatelessWidget {
-  final Widget child;
-  final Color color;
-  final double strokeWidth;
-  final List<double> dashPattern;
-  final BorderType borderType;
-  final Radius radius;
-
-  const DottedBorder({
-    required this.child,
-    this.color = Colors.grey,
-    this.strokeWidth = 1,
-    this.dashPattern = const [6, 3],
-    this.borderType = BorderType.RRect,
-    this.radius = const Radius.circular(12),
-    super.key,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.all(radius),
-        border: Border.all(color: color, width: strokeWidth, style: BorderStyle.solid),
-      ),
-      child: child,
+  Widget _imagePlaceholder() {
+    return const Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.cloud_upload_outlined, size: 40, color: Colors.grey),
+        SizedBox(height: 8),
+        Text(
+          'Tap untuk upload gambar',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.grey),
+        ),
+      ],
     );
   }
-}
 
-enum BorderType { RRect }
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descController.dispose();
+    _targetVolunteerController.dispose();
+    _feeController.dispose();
+    _districtController.dispose();
+    _villageController.dispose();
+    super.dispose();
+  }
+}
