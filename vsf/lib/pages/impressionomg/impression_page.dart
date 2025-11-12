@@ -60,7 +60,7 @@ class _ImpressionPageState extends State<ImpressionPage> {
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
-          'Bagikan Pesan & Kesanmu',
+          'Kesan & Pesan',
           style: TextStyle(
             color: Colors.black87,
             fontSize: 18,
@@ -80,7 +80,7 @@ class _ImpressionPageState extends State<ImpressionPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Info Text
+                    const SizedBox(height: 12),
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
@@ -90,188 +90,83 @@ class _ImpressionPageState extends State<ImpressionPage> {
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.info_outline, color: Colors.blue[600], size: 20),
+                          Icon(Icons.person, color: Colors.blue[600], size: 20),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
-                              'Kami sangat menghargai masukanmu untuk membuat aplikasi ini lebih baik.',
+                              'Naimatul Ulumiyah',
                               style: TextStyle(
-                                fontSize: 12,
+                                fontSize: 16,
                                 color: Colors.blue[900],
-                                height: 1.4,
+                                height: 2,
                               ),
                             ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 24),
-
-                    // Nama Field
-                    const Text(
-                      'Nama *',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextFormField(
-                      controller: _nameController,
-                      decoration: InputDecoration(
-                        hintText: 'Contoh: Budi Gunawan',
-                        prefixIcon: const Icon(Icons.person_outline),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        filled: true,
-                        fillColor: Colors.grey[50],
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Nama tidak boleh kosong';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 20),
-
-                    // NIM Field
-                    const Text(
-                      'NIM (Nomor Induk Mahasiswa) *',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextFormField(
-                      controller: _nimController,
-                      keyboardType: TextInputType.text,
-                      decoration: InputDecoration(
-                        hintText: 'Contoh: 21/470123/PA/20123',
-                        prefixIcon: const Icon(Icons.badge_outlined),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        filled: true,
-                        fillColor: Colors.grey[50],
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'NIM tidak boleh kosong';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Pesan/Kesan Field
-                    const Text(
-                      'Pesan/Kesan Anda *',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextFormField(
-                      controller: _messageController,
-                      maxLines: 6,
-                      decoration: InputDecoration(
-                        hintText: 'Ceritakan pengalaman volunteering-mu di sini...',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        filled: true,
-                        fillColor: Colors.grey[50],
-                        alignLabelWithHint: true,
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Pesan/kesan tidak boleh kosong';
-                        }
-                        if (value.length < 10) {
-                          return 'Pesan/kesan minimal 10 karakter';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 32),
-
-                    // Submit Button
-                    ElevatedButton(
-                      onPressed: _isSubmitting ? null : _submitFeedback,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue[600],
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        elevation: 0,
-                      ),
-                      child: _isSubmitting
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                          : const Text(
-                              'Kirim Pesan',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // Additional Info
+                    const SizedBox(height: 12),
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Colors.grey[100],
+                        color: Colors.blue[50],
                         borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.lightbulb_outline, color: Colors.orange[600], size: 20),
-                              const SizedBox(width: 8),
-                              const Text(
-                                'Tips',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                ),
+                        border: Border.all(color: Colors.blue[100]!),
+                      ), 
+                      child: Row(
+                        children: 
+                        [
+                          Icon(Icons.numbers, color: Colors.blue[600], size: 20),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              '124230042',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.blue[900],
+                                height: 2,
                               ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '• Ceritakan pengalaman Anda menggunakan aplikasi ini\n'
-                            '• Bagikan saran untuk perbaikan fitur\n'
-                            '• Berikan testimoni tentang kegiatan volunteer yang diikuti\n'
-                            '• Kritik dan saran sangat kami apresiasi',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey[700],
-                              height: 1.5,
                             ),
                           ),
                         ],
                       ),
                     ),
+                    const SizedBox(height: 12),
+
+                    // Nama Field
+                    const Text(
+                      'Kesan',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.blue[100]!),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.blue[900],
+                                height: 2,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12)
                   ],
                 ),
               ),

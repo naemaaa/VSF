@@ -1,4 +1,3 @@
-// event_service.dart
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:hive/hive.dart';
@@ -12,19 +11,17 @@ class EventService {
 
   static const String SUPABASE_URL = 'https://jazhzojpgcumghslmquk.supabase.co'; 
   static const String SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imphemh6b2pwZ2N1bWdoc2xtcXVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE3OTk5MzUsImV4cCI6MjA3NzM3NTkzNX0.uPzc8dVI-LgDXY2aS_K8rSWx7kdwL5oV6xBHS9j1xEo'; 
-  
   static const String STORAGE_BUCKET = 'event-images'; 
-  
+
   final _headers = {
     'Content-Type': 'application/json',
     'apikey': SUPABASE_ANON_KEY,
     'Authorization': 'Bearer $SUPABASE_ANON_KEY',
   };
 
-
   Map<String, dynamic> _eventToJson(EventModel event) {
     return {
-      'id': event.id, // ← Perlu untuk PATCH
+      'id': event.id,
       'title': event.title,
       'description': event.description,
       'image_url': event.imageUrl,
@@ -54,11 +51,9 @@ class EventService {
     try {
       print('📤 Uploading image for event $eventId...');
       
-      // 1. Baca file sebagai bytes
       final bytes = await imageFile.readAsBytes();
       final fileName = '${eventId}_${DateTime.now().millisecondsSinceEpoch}.${imageFile.path.split('.').last}';
-      
-      // 2. Upload ke Supabase Storage
+
       final uploadResponse = await http.post(
         Uri.parse('$SUPABASE_URL/storage/v1/object/$STORAGE_BUCKET/$fileName'),
         headers: {
@@ -70,7 +65,6 @@ class EventService {
       ).timeout(const Duration(seconds: 30));
 
       if (uploadResponse.statusCode == 200 || uploadResponse.statusCode == 201) {
-        // 3. Return public URL
         final publicUrl = '$SUPABASE_URL/storage/v1/object/public/$STORAGE_BUCKET/$fileName';
         print('✅ Image uploaded: $publicUrl');
         return publicUrl;
@@ -84,7 +78,6 @@ class EventService {
     }
   }
 
-  /// Update cache Hive
   Future<void> _updateCache(List<EventModel> events) async {
     final eventBox = Hive.box<EventModel>('events');
     await eventBox.clear();
@@ -94,7 +87,6 @@ class EventService {
     print('💾 Cache updated with ${events.length} events');
   }
 
-  /// Update single event di cache
   Future<void> _updateSingleCache(EventModel event) async {
     final eventBox = Hive.box<EventModel>('events');
     await eventBox.put(event.id, event);
@@ -102,57 +94,49 @@ class EventService {
   }
 
   // ==================== FETCH METHODS (API + CACHE) ====================
-
-  /// Get ALL events dari API dengan caching
+  
   Future<List<EventModel>> getAllEvents({bool forceRefresh = false}) async {
     final eventBox = Hive.box<EventModel>('events');
     
-    // 1. Cek cache dulu (offline-first)
     if (!forceRefresh && eventBox.isNotEmpty) {
       print('📦 Loading events from cache (${eventBox.length} items)');
       return eventBox.values.toList();
     }
 
-    // 2. Fetch dari API
     try {
       print('🌐 Fetching events from Supabase...');
       final response = await http.get(
         Uri.parse('$SUPABASE_URL/rest/v1/events?order=created_at.desc'),
         headers: _headers,
       ).timeout(const Duration(seconds: 15));
-      
+
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         print('✅ Fetched ${data.length} events from API');
-        
         final events = data.map((json) => EventModel.fromJson(json)).toList();
         await _updateCache(events);
         return events;
       } else {
         print('❌ API Error: ${response.statusCode}');
-        // Fallback ke cache
         return eventBox.values.toList();
       }
     } catch (e) {
       print('❌ Network Error: $e');
-      // Fallback ke cache
       return eventBox.values.toList();
     }
   }
 
-  /// Get ACTIVE events
   Future<List<EventModel>> getActiveEvents({bool forceRefresh = false}) async {
     final allEvents = await getAllEvents(forceRefresh: forceRefresh);
     return allEvents
         .where((event) => event.isActive && !event.isPast)
         .toList();
   }
-  
-  /// Get single event by ID
+
   Future<EventModel?> getEventById(String id) async {
     final eventBox = Hive.box<EventModel>('events');
     final cachedEvent = eventBox.get(id);
-
+    
     try {
       final response = await http.get(
         Uri.parse('$SUPABASE_URL/rest/v1/events?id=eq.$id&select=*&limit=1'),
@@ -174,13 +158,11 @@ class EventService {
     }
   }
 
-  /// Get events by organizer ID
   Future<List<EventModel>> getEventsByOrganizer(String organizerId) async {
     final allEvents = await getAllEvents();
     return allEvents.where((e) => e.organizerId == organizerId).toList();
   }
 
-  /// Search events
   Future<List<EventModel>> searchEvents(String query) async {
     final allEvents = await getAllEvents();
     final lowerQuery = query.toLowerCase();
@@ -191,7 +173,7 @@ class EventService {
   }
 
   // ==================== CUD OPERATIONS (API + CACHE) ====================
-
+  
   /// CREATE: Post event baru ke API
   Future<EventModel?> createEvent(EventModel event, File? imageFile) async {
     try {
@@ -227,14 +209,15 @@ class EventService {
         registeredVolunteerIds: event.registeredVolunteerIds,
       );
 
-      // 3. POST ke Supabase
+      // 3. POST ke Supabase dengan select=* untuk mendapatkan response
       final payload = _eventToJson(eventToSave);
-      // Hapus 'id' dari payload karena Supabase auto-generate (optional)
-      // payload.remove('id'); // ← Uncomment jika id auto-increment di DB
-      
+
       final response = await http.post(
-        Uri.parse('$SUPABASE_URL/rest/v1/events'),
-        headers: _headers,
+        Uri.parse('$SUPABASE_URL/rest/v1/events?select=*'), // ⬅️ PERBAIKAN
+        headers: {
+          ..._headers,
+          'Prefer': 'return=representation', // ⬅️ PERBAIKAN
+        },
         body: jsonEncode(payload),
       ).timeout(const Duration(seconds: 15));
 
@@ -242,11 +225,17 @@ class EventService {
         print('✅ Event created successfully!');
         
         // 4. Parse response & update cache
-        final List<dynamic> responseData = jsonDecode(response.body);
-        if (responseData.isNotEmpty) {
-          final createdEvent = EventModel.fromJson(responseData.first);
-          await _updateSingleCache(createdEvent);
-          return createdEvent;
+        if (response.body.isNotEmpty) { // ⬅️ PERBAIKAN: Cek dulu apakah body tidak kosong
+          try {
+            final List<dynamic> responseData = jsonDecode(response.body);
+            if (responseData.isNotEmpty) {
+              final createdEvent = EventModel.fromJson(responseData.first);
+              await _updateSingleCache(createdEvent);
+              return createdEvent;
+            }
+          } catch (e) {
+            print('⚠️ Failed to parse response: $e');
+          }
         }
         
         // Fallback: return event yang kita kirim
@@ -299,7 +288,7 @@ class EventService {
 
       // 3. PATCH ke Supabase
       final payload = _eventToJson(eventToUpdate);
-      payload.remove('id'); // Hapus id dari payload
+      payload.remove('id');
       
       final response = await http.patch(
         Uri.parse('$SUPABASE_URL/rest/v1/events?id=eq.${event.id}'),
@@ -309,8 +298,6 @@ class EventService {
 
       if (response.statusCode == 200 || response.statusCode == 204) {
         print('✅ Event updated successfully!');
-        
-        // 4. Update cache
         await _updateSingleCache(eventToUpdate);
         return eventToUpdate;
       } else {
@@ -337,11 +324,9 @@ class EventService {
       if (response.statusCode == 200 || response.statusCode == 204) {
         print('✅ Event deleted (soft)');
         
-        // Update cache
         final eventBox = Hive.box<EventModel>('events');
         final event = eventBox.get(eventId);
         if (event != null) {
-          // Update is_active di cache juga
           final updatedEvent = EventModel(
             id: event.id,
             title: event.title,
@@ -357,13 +342,12 @@ class EventService {
             currentVolunteerCount: event.currentVolunteerCount,
             participationFeeIdr: event.participationFeeIdr,
             category: event.category,
-            isActive: false, // ← Set ke false
+            isActive: false,
             createdAt: event.createdAt,
             registeredVolunteerIds: event.registeredVolunteerIds,
           );
           await eventBox.put(eventId, updatedEvent);
         }
-        
         return true;
       }
       return false;
@@ -374,14 +358,12 @@ class EventService {
   }
 
   // ==================== VOLUNTEER REGISTRATION ====================
-
-  /// Increment volunteer count
+  
   Future<bool> incrementVolunteerCount(String eventId, String volunteerId) async {
     try {
       final event = await getEventById(eventId);
       if (event == null) return false;
 
-      // Update registered_volunteer_ids
       final updatedIds = [...event.registeredVolunteerIds];
       if (!updatedIds.contains(volunteerId)) {
         updatedIds.add(volunteerId);
@@ -403,13 +385,11 @@ class EventService {
     }
   }
 
-  /// Decrement volunteer count
   Future<bool> decrementVolunteerCount(String eventId, String volunteerId) async {
     try {
       final event = await getEventById(eventId);
       if (event == null) return false;
 
-      // Update registered_volunteer_ids
       final updatedIds = [...event.registeredVolunteerIds];
       updatedIds.remove(volunteerId);
 

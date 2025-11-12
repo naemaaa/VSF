@@ -11,8 +11,7 @@ import '../../models/volunteer_registration.dart';
 import '../../widgets/event_map_viewer.dart';
 import '../volunteer/register_volunteer_page.dart';
 import 'event_participants_page.dart';
-import '../../services/event_service.dart'; // Import EventService
-// Import EventLocationModel (diperlukan untuk inisialisasi)
+import '../../services/event_service.dart'; 
 
 
 class ActivityDetailPage extends StatefulWidget {

@@ -272,30 +272,7 @@ class _RegisterIndividualPageState extends State<RegisterIndividualPage> {
                 ),
                 const SizedBox(height: 16),
 
-                // Location Picker
-                const Text(
-                  'Pilih Lokasi Anda (Opsional)',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                LocationPicker(
-                  initialLocation: _selectedLocation,
-                  onLocationPicked: _handleLocationPicked,
-                ),
-                if (_selectedLocation != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      'Koordinat: ${_selectedLocation!.latitude.toStringAsFixed(6)}, ${_selectedLocation!.longitude.toStringAsFixed(6)}',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                    ),
-                  ),
-                const SizedBox(height: 32),
-
+                
                 // Register Button
                 ElevatedButton(
                   onPressed: _isLoading ? null : _register,
