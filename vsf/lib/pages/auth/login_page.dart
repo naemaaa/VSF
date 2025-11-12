@@ -2,8 +2,6 @@
 import 'package:flutter/material.dart';
 // import 'package:crypto/crypto.dart'; // DIHAPUS
 // import 'dart:convert'; // DIHAPUS
-import 'package:hive/hive.dart';
-import '../../models/user_model.dart';
 import '../../services/session_service.dart';
 import '../../services/auth_service.dart'; // Diperbaiki, ganti auth_service
 import '../main_screen.dart';
@@ -295,7 +293,7 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.check_circle, color: Colors.green[600], size: 16),
+                            Icon(Icons.check_circle, color: Colors.blue[600], size: 16),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
@@ -368,7 +366,7 @@ class _LoginPageState extends State<LoginPage> {
             // Daftar sebagai Organisasi
             ListTile(
               leading: CircleAvatar(
-                backgroundColor: Colors.green[50],
+                backgroundColor: Colors.blue[50],
                 child: Icon(Icons.business, color: Colors.blue[600]),
               ),
               title: const Text(

@@ -10,11 +10,9 @@ class EventService {
   factory EventService() => _instance;
   EventService._internal();
 
-  // 🔥 GANTI DENGAN URL & KEY SUPABASE ANDA
   static const String SUPABASE_URL = 'https://jazhzojpgcumghslmquk.supabase.co'; 
   static const String SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imphemh6b2pwZ2N1bWdoc2xtcXVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE3OTk5MzUsImV4cCI6MjA3NzM3NTkzNX0.uPzc8dVI-LgDXY2aS_K8rSWx7kdwL5oV6xBHS9j1xEo'; 
   
-  // Bucket name untuk Storage (sesuaikan dengan bucket Anda)
   static const String STORAGE_BUCKET = 'event-images'; 
   
   final _headers = {
@@ -24,7 +22,6 @@ class EventService {
   };
 
 
-  /// Convert EventModel ke JSON untuk API
   Map<String, dynamic> _eventToJson(EventModel event) {
     return {
       'id': event.id, // ← Perlu untuk PATCH
@@ -53,7 +50,6 @@ class EventService {
     };
   }
 
-  /// Upload gambar ke Supabase Storage
   Future<String?> uploadImageToStorage(File imageFile, String eventId) async {
     try {
       print('📤 Uploading image for event $eventId...');

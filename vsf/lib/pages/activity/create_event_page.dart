@@ -253,27 +253,16 @@ class _CreateEventPageState extends State<CreateEventPage> {
     setState(() => _isSubmitting = false);
     
     // 5. Handle result
-    if (resultEvent != null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${isNewEvent ? 'Kegiatan berhasil didaftarkan' : 'Kegiatan berhasil diperbarui'}!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        Navigator.pop(context, true);
-      }
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Gagal menyimpan kegiatan. Pastikan API Key dan RLS sudah benar!'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${isNewEvent ? 'Kegiatan berhasil didaftarkan' : 'Kegiatan berhasil diperbarui'}!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      Navigator.pop(context, true);
     }
-  }
+    }
 
   @override
   Widget build(BuildContext context) {
@@ -503,7 +492,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
                   child: ElevatedButton(
                     onPressed: _isSubmitting ? null : _submit,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue[600],
+                      backgroundColor: Colors.blue,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

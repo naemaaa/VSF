@@ -1,11 +1,10 @@
-// home_page.dart
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:vsf/pages/activity/activity_detail_page.dart';
 import '../../services/session_service.dart';
 import '../../services/article_service.dart';
-import '../../services/event_service.dart'; // <-- BARU: Import EventService
+import '../../services/event_service.dart'; 
 import 'package:url_launcher/url_launcher.dart';
 import '../../models/user_model.dart';
 import '../../models/event_model.dart';
@@ -26,13 +25,13 @@ class _HomePageState extends State<HomePage> {
   late final Box<UserModel> _userBox;
   late final Box<UserStats> _statsBox;
   
-  List<EventModel> _activeEvents = []; // <-- Event aktif
+  List<EventModel> _activeEvents = []; 
   List<ArticleModel> _articles = [];
   
-  bool _loadingData = false; // <-- Loading state gabungan
+  bool _loadingData = false; 
   
   final ArticleService _articleService = ArticleService();
-  final EventService _eventService = EventService(); // <-- Event Service instance
+  final EventService _eventService = EventService(); 
 
   @override
   void initState() {
@@ -79,7 +78,6 @@ class _HomePageState extends State<HomePage> {
       }
 
       if (stats == null) {
-        // Create new stats entry if not found
         stats = UserStats(userId: userId);
         _statsBox.add(stats);
       }
@@ -94,7 +92,6 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  /// Load event dan artikel dari Service (API/Cache)
   Future<void> _loadData({bool forceRefresh = false}) async {
     if (_loadingData && !forceRefresh) return;
     
@@ -148,7 +145,7 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -230,10 +227,6 @@ class _HomePageState extends State<HomePage> {
                   ],
                 ),
               ),
-
-              const SizedBox(height: 8),
-
-              // Statistik Cards - Per User
               Container(
                 color: Colors.white,
                 padding: const EdgeInsets.all(20),
@@ -245,6 +238,7 @@ class _HomePageState extends State<HomePage> {
                         label: 'Partisipasi',
                         value: (_userStats?.totalParticipations ?? 0).toString(),
                         color: Colors.blue,
+                        isSmallValue: true
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -257,12 +251,10 @@ class _HomePageState extends State<HomePage> {
                         isSmallValue: true,
                       ),
                     ),
+                    const SizedBox(width: 12),
                   ],
                 ),
               ),
-
-              const SizedBox(height: 20),
-
               // Artikel Kemanusiaan Section
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -295,7 +287,6 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
 
-              // ARTIKEL LIST dengan Loading State
               _loadingData
                   ? const SizedBox(
                       height: 260,
@@ -332,9 +323,6 @@ class _HomePageState extends State<HomePage> {
                             },
                           ),
                         ),
-
-              const SizedBox(height: 24),
-
               // Aktivitas Populer Section
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -390,7 +378,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // Helper untuk inisial
+
   Widget _initialsPlaceholder() {
     return Text(
       _currentUser?.initials ?? '?',
@@ -527,10 +515,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildEventCard(EventModel event) {
-    // Navigasi ke ActivityDetailPage
     void navigateToDetail() {
       if (_currentUser == null) {
-        // Handle case where user is not logged in
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Anda harus login untuk melihat detail kegiatan.')),
         );
@@ -562,20 +548,40 @@ class _HomePageState extends State<HomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Image
             ClipRRect(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-              child: Image.network(
-                event.imageUrl ?? 'https://via.placeholder.com/400x200',
-                height: 160,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    height: 160,
-                    color: Colors.grey[200],
-                    child: const Icon(Icons.image, size: 64),
-                  );
-                },
+              child: Stack(
+                children: [
+                  _buildEventImage(event),
+                  // Status Badge
+                  Positioned(
+                    top: 12,
+                    right: 12,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: event.isFull
+                            ? Colors.red
+                            : event.isPast
+                                ? Colors.grey
+                                : Colors.green,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        event.eventStatus,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
             Padding(
@@ -583,23 +589,25 @@ class _HomePageState extends State<HomePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Category
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.green[50],
+                      color: Colors.blue[50],
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
                       event.category,
                       style: TextStyle(
                         fontSize: 11,
-                        color: Colors.green[600],
+                        color: Colors.blue[600],
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
                   const SizedBox(height: 8),
-                  
+
+                  // Title
                   Text(
                     event.title,
                     style: const TextStyle(
@@ -612,51 +620,72 @@ class _HomePageState extends State<HomePage> {
                   ),
                   const SizedBox(height: 8),
 
+                  // Location
                   Row(
                     children: [
                       Icon(Icons.location_on_outlined, size: 16, color: Colors.grey[600]),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
-                          event.location.shortAddress, // Gunakan getter dari EventLocationModel
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey[600],
-                          ),
+                          event.location.shortAddress,
+                          style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 4),
 
+                  // Date
                   Row(
                     children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(Icons.people, size: 16, color: Colors.grey[600]),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '${event.currentVolunteerCount}/${event.targetVolunteerCount} Volunteer',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.grey[600],
-                                  ),
-                                ),
-                              ],
+                      Icon(Icons.calendar_today_outlined, size: 16, color: Colors.grey[600]),
+                      const SizedBox(width: 4),
+                      Text(
+                        event.formattedEventDate,
+                        style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Volunteers & Price
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // Volunteers
+                      Row(
+                        children: [
+                          Icon(Icons.people, size: 16, color: Colors.grey[600]),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${event.currentVolunteerCount}/${event.targetVolunteerCount}',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey[600],
+                              fontWeight: FontWeight.w500,
                             ),
-                            const SizedBox(height: 4),
-                            LinearProgressIndicator(
-                              value: event.volunteerPercentage / 100,
-                              backgroundColor: Colors.grey[200],
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.blue[600]!),
-                            ),
-                          ],
+                          ),
+                        ],
+                      ),
+                      // Price
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: event.isFree ? Colors.green[50] : Colors.orange[50],
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          event.formattedPrice,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: event.isFree ? Colors.green[600] : Colors.orange[600],
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ],
@@ -668,5 +697,52 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
     );
+  }
+
+  Widget _buildEventImage(EventModel event) {
+    final url = event.imageUrl;
+    if (url == null || url.isEmpty) {
+      return Container(
+        height: 160,
+        color: Colors.grey[200],
+        child: const Icon(Icons.image, size: 64),
+      );
+    }
+
+    // If looks like remote URL, use network
+    if (url.startsWith('http') || url.startsWith('https')) {
+      return Image.network(
+        url,
+        height: 160,
+        width: double.infinity,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => Container(
+          height: 160,
+          color: Colors.grey[200],
+          child: const Icon(Icons.broken_image, size: 64),
+        ),
+      );
+    }
+
+    // Treat as local file path
+    try {
+      final file = File(url);
+      if (file.existsSync()) {
+        return Image.file(file, height: 160, width: double.infinity, fit: BoxFit.cover);
+      } else {
+        return Container(
+          height: 160,
+          color: Colors.grey[200],
+          child: const Icon(Icons.image_not_supported, size: 64),
+        );
+      }
+    } catch (e) {
+      return Container(
+        height: 160,
+        color: Colors.grey[200],
+        child: const Icon(Icons.broken_image, size: 64),
+      );
+    }
+
   }
 }

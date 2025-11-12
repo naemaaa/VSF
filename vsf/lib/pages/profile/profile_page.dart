@@ -108,7 +108,6 @@ class _ProfilePageState extends State<ProfilePage> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // Profile Header
             Container(
               color: Colors.white,
               padding: const EdgeInsets.all(24),
@@ -167,7 +166,6 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                   const SizedBox(height: 4),
 
-                  // Email
                   Text(
                     currentUser.email,
                     style: TextStyle(
@@ -177,7 +175,6 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                   const SizedBox(height: 8),
 
-                  // User Type Badge
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
