@@ -1,4 +1,3 @@
-// create_event_page.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';  
@@ -172,6 +171,13 @@ class _CreateEventPageState extends State<CreateEventPage> {
     });
   }
 
+  // ✅ PERBAIKAN #1: Helper function untuk convert local time ke UTC
+  DateTime _localTimeToUTC(DateTime localTime) {
+    // Asumsikan user di WIB (UTC+7)
+    // Untuk convert dari local ke UTC, kurangi offset timezone
+    return localTime.subtract(const Duration(hours: 7));
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate() || 
         _startDateTime == null || 
@@ -216,8 +222,9 @@ class _CreateEventPageState extends State<CreateEventPage> {
                        widget.currentUser.organizationName ?? '-',
         organizerImageUrl: widget.currentUser.profileImagePath,
         location: location,
-        eventStartTime: _startDateTime!.toUtc(),
-        eventEndTime: _endDateTime!.toUtc(),
+        // ✅ PERBAIKAN #1: Convert local time ke UTC dengan helper
+        eventStartTime: _localTimeToUTC(_startDateTime!),
+        eventEndTime: _localTimeToUTC(_endDateTime!),
         targetVolunteerCount: int.tryParse(_targetVolunteerController.text) ?? 0,
         currentVolunteerCount: widget.existingEvent?.currentVolunteerCount ?? 0,
         participationFeeIdr: int.tryParse(_feeController.text) ?? 0,

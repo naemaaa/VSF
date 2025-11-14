@@ -75,7 +75,6 @@ void main() async {
   runApp(const MyApp());
 }
 
-// Request location permissions
 Future<void> _requestLocationPermissions() async {
   try {
     final status = await Geolocator.checkPermission();

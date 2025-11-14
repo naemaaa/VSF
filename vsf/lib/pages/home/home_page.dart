@@ -19,7 +19,8 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+// ✅ PERBAIKAN #3: Tambahkan WidgetsBindingObserver untuk lifecycle
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   UserModel? _currentUser;
   UserStats? _userStats;
   late final Box<UserModel> _userBox;
@@ -36,6 +37,9 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    // ✅ PERBAIKAN #3: Tambahkan observer untuk lifecycle
+    WidgetsBinding.instance.addObserver(this);
+    
     _userBox = Hive.box<UserModel>('users');
     _statsBox = Hive.box<UserStats>('user_stats');
     
@@ -43,15 +47,35 @@ class _HomePageState extends State<HomePage> {
     _loadData();
     
     _userBox.listenable().addListener(() {
+      print('📦 Users box changed');
       _loadCurrentUser();
       if (mounted) setState(() {});
     });
     
+    // ✅ PERBAIKAN #3: Listen ke stats changes dengan proper listener
     _statsBox.listenable().addListener(() {
+      print('📊 Stats box changed, refreshing UI');
       if (_currentUser != null) {
         _loadUserStats(_currentUser!.id);
       }
     });
+  }
+
+  @override
+  void dispose() {
+    // ✅ PERBAIKAN #3: Remove observer saat dispose
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // ✅ PERBAIKAN #3: Lifecycle callback untuk detect app resume
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      print('🔄 App resumed, refreshing HomePage...');
+      _loadCurrentUser();
+      _loadData();
+    }
   }
 
   Future<void> _loadCurrentUser() async {
@@ -69,18 +93,24 @@ class _HomePageState extends State<HomePage> {
 
   void _loadUserStats(String userId) {
     try {
-      // PERBAIKAN: Gunakan userId sebagai kunci untuk mendapatkan UserStats secara langsung
-      UserStats? stats = _statsBox.get(userId); 
+      print('🔍 Loading stats for user: $userId');
+      
+      UserStats? stats;
+      for (var stat in _statsBox.values) {
+        if (stat.userId == userId) {
+          stats = stat;
+          break;
+        }
+      }
 
       if (stats == null) {
-        // Jika tidak ada data UserStats untuk user ini di Hive, buat baru.
+        print('   ℹ️ No stats found, creating new...');
         stats = UserStats(userId: userId);
-        
-        // PERBAIKAN KRUSIAL: Simpan UserStats dengan userId sebagai kunci (put() bukan add())
-        _statsBox.put(userId, stats); 
+        _statsBox.add(stats);
       }
 
       if (mounted) {
+        print('   ✅ Stats updated: ${stats.totalParticipations} participations, ${stats.totalDonations} donated');
         setState(() {
           _userStats = stats;
         });
@@ -96,6 +126,8 @@ class _HomePageState extends State<HomePage> {
     setState(() => _loadingData = true);
     
     try {
+      print('🌐 Loading data (forceRefresh: $forceRefresh)...');
+      
       // 1. Load Event Aktif (dari API dengan caching)
       final events = await _eventService.getActiveEvents(forceRefresh: forceRefresh);
 
@@ -111,6 +143,7 @@ class _HomePageState extends State<HomePage> {
           _articles = articles;
           _loadingData = false;
         });
+        print('   ✅ Data loaded: ${events.length} events, ${articles.length} articles');
       }
     } catch (e) {
       print('❌ Error loading data: $e');
@@ -361,7 +394,7 @@ class _HomePageState extends State<HomePage> {
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       padding: const EdgeInsets.symmetric(horizontal: 20),
-                      itemCount: _activeEvents.take(3).length, // Hanya tampilkan 3 yang terpopuler
+                      itemCount: _activeEvents.take(3).length,
                       itemBuilder: (context, index) {
                         final event = _activeEvents[index];
                         return _buildEventCard(event);
@@ -741,6 +774,5 @@ class _HomePageState extends State<HomePage> {
         child: const Icon(Icons.broken_image, size: 64),
       );
     }
-
   }
 }

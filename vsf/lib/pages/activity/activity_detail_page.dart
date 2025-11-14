@@ -1,4 +1,3 @@
-// activity_detail_page.dart
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:geolocator/geolocator.dart';
@@ -11,8 +10,6 @@ import '../../models/volunteer_registration.dart';
 import '../../widgets/event_map_viewer.dart';
 import '../volunteer/register_volunteer_page.dart';
 import 'event_participants_page.dart';
-import '../../services/event_service.dart'; 
-
 
 class ActivityDetailPage extends StatefulWidget {
   final EventModel event;
@@ -29,9 +26,6 @@ class ActivityDetailPage extends StatefulWidget {
 }
 
 class _ActivityDetailPageState extends State<ActivityDetailPage> {
-  // Gunakan EventService
-  final EventService _eventService = EventService();
-  
   final double _usdRate = 15800.0;
   final double _eurRate = 17200.0;
   String _selectedTimezone = 'WIB';
@@ -40,16 +34,25 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
   String? _currentUserLng;
   String? _currentUserProvince;
   bool _locationLoading = false;
-  
-  // Simpan event di state untuk update status setelah register/cancel
-  late EventModel _currentEvent; 
+
+  // ✅ PERBAIKAN #2B: Track event lokal untuk UI updates
+  late EventModel _localEvent;
 
   @override
   void initState() {
     super.initState();
-    _currentEvent = widget.event; // Inisialisasi dari widget
+    _localEvent = widget.event; // Copy event dari widget
     _setCurrentUserProvince();
     _requestUserLocation();
+  }
+
+  @override
+  void didUpdateWidget(ActivityDetailPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // ✅ Refresh jika event dari widget berubah
+    if (oldWidget.event.id != widget.event.id) {
+      setState(() => _localEvent = widget.event);
+    }
   }
 
   void _setCurrentUserProvince() {
@@ -64,13 +67,16 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
     setState(() => _locationLoading = true);
     
     try {
+      // Check permission
       LocationPermission permission = await Geolocator.checkPermission();
       
       if (permission == LocationPermission.denied) {
+        print('📍 Location permission denied, requesting...');
         permission = await Geolocator.requestPermission();
       }
       
       if (permission == LocationPermission.deniedForever) {
+        print('❌ Location permission denied forever');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -83,10 +89,15 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
       }
       
       if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
+        print('✅ Location permission granted');
+        
+        // Get current position
         final position = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high,
           timeLimit: const Duration(seconds: 10),
         );
+        
+        print('📍 Got user location: ${position.latitude}, ${position.longitude}');
         
         if (mounted) {
           setState(() {
@@ -104,20 +115,8 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
     }
   }
 
-  // FUNGSI UNTUK REFRESH DATA EVENT DARI API/CACHE
-  Future<void> _refreshEventData(String eventId) async {
-    // Memaksa refresh event dari API untuk mendapatkan data volunteer terbaru
-    final updatedEvent = await _eventService.getEventById(eventId); 
-    if (updatedEvent != null) {
-      if (mounted) setState(() => _currentEvent = updatedEvent);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    // Gunakan _currentEvent (state)
-    final event = _currentEvent;
-    
     return Scaffold(
       backgroundColor: Colors.white,
       body: CustomScrollView(
@@ -167,79 +166,79 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
               ),
             ],
             flexibleSpace: FlexibleSpaceBar(
-              background: _buildHeaderImage(event),
+              background: _buildHeaderImage(),
             ),
           ),
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Status & Category
-                  Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.blue[50],
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          event.category,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.blue[600],
-                            fontWeight: FontWeight.bold,
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.blue[50],
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              _localEvent.category,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.blue[600],
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                           ),
+                          const Spacer(),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _localEvent.isFull
+                                  ? Colors.red[50]
+                                  : _localEvent.isPast
+                                      ? Colors.grey[200]
+                                      : Colors.green[50],
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              _localEvent.eventStatus,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: _localEvent.isFull
+                                    ? Colors.red[600]
+                                    : _localEvent.isPast
+                                        ? Colors.grey[600]
+                                        : Colors.green[600],
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        _localEvent.title,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                          height: 1.3,
                         ),
                       ),
-                      const Spacer(),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: event.isFull
-                              ? Colors.red[50]
-                              : event.isPast
-                                  ? Colors.grey[200]
-                                  : Colors.green[50],
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          event.eventStatus,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: event.isFull
-                                ? Colors.red[600]
-                                : event.isPast
-                                    ? Colors.grey[600]
-                                    : Colors.green[600],
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    event.title,
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                      height: 1.3,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  // Organizer Info
-                  Row(
+                      const SizedBox(height: 16),
+                      Row(
                         children: [
                           // Organizer Avatar/Logo
                           Container(
@@ -251,11 +250,11 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
                               border: Border.all(color: Colors.orange[300]!, width: 2),
                             ),
                             child: ClipOval(
-                              child: widget.event.organizerImageUrl != null && 
-                                      widget.event.organizerImageUrl!.isNotEmpty
-                                  ? widget.event.organizerImageUrl!.startsWith('http')
+                              child: _localEvent.organizerImageUrl != null && 
+                                      _localEvent.organizerImageUrl!.isNotEmpty
+                                  ? _localEvent.organizerImageUrl!.startsWith('http')
                                       ? Image.network(
-                                          widget.event.organizerImageUrl!,
+                                          _localEvent.organizerImageUrl!,
                                           fit: BoxFit.cover,
                                           errorBuilder: (context, error, stackTrace) {
                                             return Container(
@@ -269,7 +268,7 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
                                           },
                                         )
                                       : Image.file(
-                                          File(widget.event.organizerImageUrl!),
+                                          File(_localEvent.organizerImageUrl!),
                                           fit: BoxFit.cover,
                                           errorBuilder: (context, error, stackTrace) {
                                             return Container(
@@ -305,7 +304,7 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
                                   ),
                                 ),
                                 Text(
-                                  widget.event.organizerName,
+                                  _localEvent.organizerName,
                                   style: const TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.bold,
@@ -318,257 +317,246 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
                         ],
                       ),
                       const SizedBox(height: 24),
-                  const SizedBox(height: 24),
-                  
-                  // Deskripsi
-                  const Text(
-                    'Deskripsi Kegiatan',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    event.description,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[700],
-                      height: 1.6,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  
-                  // Waktu Kegiatan
-                  const Text(
-                    'Waktu Kegiatan',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      _buildTimezoneChip('WIB'),
-                      const SizedBox(width: 8),
-                      _buildTimezoneChip('WITA'),
-                      const SizedBox(width: 8),
-                      _buildTimezoneChip('WIT'),
-                      const SizedBox(width: 8),
-                      _buildTimezoneChip('London'),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.blue[50],
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.access_time, color: Colors.blue[600]),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                _selectedTimezone,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.blue[600],
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                _getConvertedTime(event),
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.black87,
-                                ),
-                              ),
-                              Text(
-                                event.formattedEventDate,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.grey[600],
-                                ),
-                              ),
-                            ],
-                          ),
+                      const Text(
+                        'Deskripsi Kegiatan',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
                         ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  
-                  // Lokasi
-                  const Text(
-                    'Lokasi',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _localEvent.description,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[700],
+                          height: 1.6,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      const Text(
+                        'Waktu Kegiatan',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          _buildTimezoneChip('WIB'),
+                          const SizedBox(width: 8),
+                          _buildTimezoneChip('WITA'),
+                          const SizedBox(width: 8),
+                          _buildTimezoneChip('WIT'),
+                          const SizedBox(width: 8),
+                          _buildTimezoneChip('London'),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.blue[50],
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
                           children: [
-                            Icon(Icons.location_on, color: Colors.red[400]),
+                            Icon(Icons.access_time, color: Colors.blue[600]),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: Text(
-                                event.location.fullAddress,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.black87,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _selectedTimezone,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.blue[600],
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _getConvertedTime(_localEvent),
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                  Text(
+                                    _localEvent.formattedEventDate,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      const Text(
+                        'Lokasi',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.location_on, color: Colors.red[400]),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    _localEvent.location.fullAddress,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: _openGoogleMaps,
+                                icon: const Icon(Icons.map),
+                                label: const Text('Lihat Lokasi di Maps'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.blue[600],
+                                  side: BorderSide(color: Colors.blue[600]!),
                                 ),
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            onPressed: () => _openGoogleMaps(event),
-                            icon: const Icon(Icons.map),
-                            label: const Text('Lihat Lokasi di Maps'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.blue[600],
-                              side: BorderSide(color: Colors.blue[600]!),
+                      ),
+                      const SizedBox(height: 16),
+                      EventMapViewer(
+                        event: _localEvent,
+                        currentUserLat: _currentUserLat,
+                        currentUserLng: _currentUserLng,
+                        currentUserProvince: _currentUserProvince,
+                      ),
+                      const SizedBox(height: 24),
+                      const Text(
+                        'Harga Partisipasi',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildCurrencyCard(
+                              'IDR',
+                              _localEvent.formattedPrice,
+                              Colors.blue,
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  // Map Viewer
-                  EventMapViewer(
-                    event: event,
-                    currentUserLat: _currentUserLat,
-                    currentUserLng: _currentUserLng,
-                    currentUserProvince: _currentUserProvince,
-                  ),
-                  const SizedBox(height: 24),
-                  
-                  // Harga Partisipasi
-                  const Text(
-                    'Harga Partisipasi',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildCurrencyCard(
-                          'IDR',
-                          event.formattedPrice,
-                          Colors.blue,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildCurrencyCard(
-                          'USD',
-                          _convertToUSD(event),
-                          Colors.green,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildCurrencyCard(
-                          'EUR',
-                          _convertToEUR(event),
-                          Colors.orange,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  
-                  // Jumlah Volunteer
-                  const Text(
-                    'Jumlah Volunteer',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              '${event.currentVolunteerCount} / ${event.targetVolunteerCount}',
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _buildCurrencyCard(
+                              'USD',
+                              _convertToUSD(),
+                              Colors.green,
                             ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _buildCurrencyCard(
+                              'EUR',
+                              _convertToEUR(),
+                              Colors.orange,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      const Text(
+                        'Jumlah Volunteer',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  '${_localEvent.currentVolunteerCount} / ${_localEvent.targetVolunteerCount}',
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  '${_localEvent.volunteerPercentage.toStringAsFixed(0)}%',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey[600],
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            LinearProgressIndicator(
+                              value: _localEvent.volunteerPercentage / 100,
+                              backgroundColor: Colors.grey[300],
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.blue[600]!,
+                              ),
+                              minHeight: 8,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            const SizedBox(height: 8),
                             Text(
-                              '${event.volunteerPercentage.toStringAsFixed(0)}%',
+                              'Tersisa ${_localEvent.remainingSlots} slot',
                               style: TextStyle(
-                                fontSize: 14,
+                                fontSize: 13,
                                 color: Colors.grey[600],
-                                fontWeight: FontWeight.bold,
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 8),
-                        LinearProgressIndicator(
-                          value: event.volunteerPercentage / 100,
-                          backgroundColor: Colors.grey[300],
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Colors.blue[600]!,
-                          ),
-                          minHeight: 8,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Tersisa ${event.remainingSlots} slot',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ],
@@ -586,14 +574,14 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
           ],
         ),
         child: SafeArea(
-          child: _buildBottomActions(event),
+          child: _buildBottomActions(),
         ),
       ),
     );
   }
 
-  Widget _buildBottomActions(EventModel event) {
-    if (event.organizerId == widget.currentUser.id) {
+  Widget _buildBottomActions() {
+    if (widget.event.organizerId == widget.currentUser.id) {
       return Row(
         children: [
           Expanded(
@@ -603,7 +591,7 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
                   context,
                   MaterialPageRoute(
                     builder: (context) => EventParticipantsPage(
-                      event: event,
+                      event: _localEvent,
                       currentUser: widget.currentUser,
                     ),
                   ),
@@ -623,7 +611,7 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
           SizedBox(
             width: 140,
             child: OutlinedButton.icon(
-              onPressed: () => _openGoogleMaps(event),
+              onPressed: _openGoogleMaps,
               icon: const Icon(Icons.map),
               label: const Text('Lihat Maps'),
               style: OutlinedButton.styleFrom(
@@ -638,13 +626,14 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
       );
     }
 
-    final isRegistered = event.isUserRegistered(widget.currentUser.id);
+    // ✅ PERBAIKAN #2B: Gunakan _localEvent untuk cek registration
+    final isRegistered = _localEvent.isUserRegistered(widget.currentUser.id);
     if (isRegistered) {
-      if (event.isPast) {
+      if (_localEvent.isPast) {
         return SizedBox(
           width: double.infinity,
           child: OutlinedButton.icon(
-            onPressed: () => _openGoogleMaps(event),
+            onPressed: _openGoogleMaps,
             icon: const Icon(Icons.map),
             label: const Text('Lihat Maps'),
             style: OutlinedButton.styleFrom(
@@ -656,11 +645,12 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
           ),
         );
       }
+      // ✅ PERBAIKAN: Sudah daftar, tampilkan BATALKAN
       return Row(
         children: [
           Expanded(
             child: ElevatedButton(
-              onPressed: () => _confirmCancelRegistration(event),
+              onPressed: _confirmCancelRegistration,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red[600],
                 foregroundColor: Colors.white,
@@ -674,7 +664,7 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
           SizedBox(
             width: 140,
             child: OutlinedButton.icon(
-              onPressed: () => _openGoogleMaps(event),
+              onPressed: _openGoogleMaps,
               icon: const Icon(Icons.map),
               label: const Text('Lihat Maps'),
               style: OutlinedButton.styleFrom(
@@ -692,23 +682,37 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
-        onPressed: event.isFull || event.isPast
+        onPressed: _localEvent.isFull || _localEvent.isPast
             ? null
-            : () async {
-                final result = await Navigator.push(
+            : () {
+                Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => RegisterVolunteerPage(
-                      event: event,
+                      event: _localEvent,
                       currentUser: widget.currentUser,
                     ),
                   ),
-                );
-                // BARIS KRUSIAL: Memastikan data event di-refresh setelah pendaftaran berhasil
-                if (result == true) {
-                  // Panggil refresh data dari server/cache untuk memperbarui _currentEvent
-                  await _refreshEventData(event.id); 
-                }
+                ).then((result) {
+                  // ✅ PERBAIKAN: Refresh event saat kembali dari register
+                  if (result == true) {
+                    print('🔄 Returning from register/payment, refreshing event...');
+                    Future.delayed(const Duration(milliseconds: 500), () {
+                      if (mounted) {
+                        final eventBox = Hive.box<EventModel>('events');
+                        final updatedEvent = eventBox.get(widget.event.id);
+                        if (updatedEvent != null) {
+                          setState(() {
+                            _localEvent = updatedEvent;
+                            print('✅ Event refreshed from Hive');
+                            print('   Registered users: ${_localEvent.registeredVolunteerIds}');
+                            print('   Is user registered: ${_localEvent.isUserRegistered(widget.currentUser.id)}');
+                          });
+                        }
+                      }
+                    });
+                  }
+                });
               },
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.blue[600],
@@ -721,9 +725,9 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
           disabledBackgroundColor: Colors.grey[300],
         ),
         child: Text(
-          event.isFull
+          _localEvent.isFull
               ? 'Kuota Penuh'
-              : event.isPast
+              : _localEvent.isPast
                   ? 'Event Sudah Selesai'
                   : 'Daftar Volunteer',
           style: const TextStyle(
@@ -735,7 +739,7 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
     );
   }
 
-  Future<void> _confirmCancelRegistration(EventModel event) async {
+  Future<void> _confirmCancelRegistration() async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -748,80 +752,39 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
       ),
     );
     if (confirm == true) {
-      await _cancelRegistration(event);
+      await _cancelRegistration();
     }
   }
 
-  Future<void> _cancelRegistration(EventModel event) async {
+  Future<void> _cancelRegistration() async {
     try {
-      // 1. Panggil Service untuk menghapus ID dari registeredVolunteerIds di Supabase
-      final success = await _eventService.decrementVolunteerCount(event.id, widget.currentUser.id);
-
-      if (!success) {
-        throw Exception('Gagal membatalkan pendaftaran. Coba lagi.');
-      }
-      
-      // 2. Hapus entri registrasi dari box lokal (penting untuk kebersihan data)
       final regBox = Hive.box<VolunteerRegistration>('registrations');
+      final eventBox = Hive.box<EventModel>('events');
+      final regEntry = regBox.values.firstWhere(
+        (r) => r.eventId == _localEvent.id && r.volunteerId == widget.currentUser.id,
+        orElse: () => throw Exception('Registration not found'),
+      );
       dynamic foundKey;
       for (final k in regBox.keys) {
         final v = regBox.get(k);
-        if (v != null && v.eventId == event.id && v.volunteerId == widget.currentUser.id) {
+        if (v == regEntry) {
           foundKey = k;
           break;
         }
       }
       if (foundKey != null) await regBox.delete(foundKey);
-
-      // 3. Refresh state di halaman detail
+      
+      final event = eventBox.get(_localEvent.id) ?? _localEvent;
+      event.removeVolunteer(widget.currentUser.id);
+      await eventBox.put(event.id, event);
+      
       if (mounted) {
+        setState(() => _localEvent = event);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pendaftaran berhasil dibatalkan')));
-        // Memuat ulang data dari server untuk memperbarui _currentEvent
-        await _refreshEventData(event.id); 
       }
     } catch (e) {
-      print('❌ Error canceling registration: $e');
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal membatalkan pendaftaran')));
     }
-  }
-  
-  // Widget helper
-  Widget _buildOrganizerAvatar(EventModel event) {
-    return Container(
-      width: 50,
-      height: 50,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: Colors.orange[100],
-        border: Border.all(color: Colors.orange[300]!, width: 2),
-      ),
-      child: ClipOval(
-        child: (event.organizerImageUrl != null && event.organizerImageUrl!.isNotEmpty)
-            ? (event.organizerImageUrl!.startsWith('http')
-                ? Image.network(
-                    event.organizerImageUrl!,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => _defaultOrganizerIcon(),
-                  )
-                : Image.file(
-                    File(event.organizerImageUrl!),
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => _defaultOrganizerIcon(),
-                  ))
-            : _defaultOrganizerIcon(),
-      ),
-    );
-  }
-
-  Widget _defaultOrganizerIcon() {
-    return Container(
-      color: Colors.orange[100],
-      child: Icon(
-        Icons.business,
-        color: Colors.orange[600],
-        size: 24,
-      ),
-    );
   }
 
   Widget _buildTimezoneChip(String timezone) {
@@ -848,12 +811,12 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
     );
   }
 
-  Widget _buildHeaderImage(EventModel event) {
-    final url = event.imageUrl;
+  Widget _buildHeaderImage() {
+    final url = widget.event.imageUrl;
     if (url == null || url.isEmpty) {
       return Container(
         color: Colors.grey[200],
-        child: const Center(child: Icon(Icons.image, size: 80)),
+        child: const Icon(Icons.image, size: 80),
       );
     }
 
@@ -861,10 +824,12 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
       return Image.network(
         url,
         fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => Container(
-          color: Colors.grey[200],
-          child: const Center(child: Icon(Icons.image, size: 80)),
-        ),
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            color: Colors.grey[200],
+            child: const Icon(Icons.image, size: 80),
+          );
+        },
       );
     }
 
@@ -873,15 +838,17 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
       return Image.file(
         file,
         fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => Container(
-          color: Colors.grey[200],
-          child: const Center(child: Icon(Icons.image, size: 80)),
-        ),
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            color: Colors.grey[200],
+            child: const Icon(Icons.image, size: 80),
+          );
+        },
       );
     } catch (_) {
       return Container(
         color: Colors.grey[200],
-        child: const Center(child: Icon(Icons.image, size: 80)),
+        child: const Icon(Icons.image, size: 80),
       );
     }
   }
@@ -902,8 +869,9 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
         offsetHours = 0; 
         break;
     }
-    final startUtc = event.eventStartTime.toUtc();
-    final endUtc = event.eventEndTime.toUtc();
+    final startUtc = event.eventStartTime;
+    final endUtc = event.eventEndTime;
+    
     final convertedStart = startUtc.add(Duration(hours: offsetHours));
     final convertedEnd = endUtc.add(Duration(hours: offsetHours));
     final formatter = DateFormat('HH:mm');
@@ -943,44 +911,58 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
     );
   }
 
-  String _convertToUSD(EventModel event) {
-    if (event.isFree) return 'Free';
-    final usd = event.participationFeeIdr / _usdRate;
+  String _convertToUSD() {
+    if (_localEvent.isFree) return 'Free';
+    final usd = _localEvent.participationFeeIdr / _usdRate;
     return '\$${usd.toStringAsFixed(2)}';
   }
 
-  String _convertToEUR(EventModel event) {
-    if (event.isFree) return 'Free';
-    final eur = event.participationFeeIdr / _eurRate;
+  String _convertToEUR() {
+    if (_localEvent.isFree) return 'Free';
+    final eur = _localEvent.participationFeeIdr / _eurRate;
     return '€${eur.toStringAsFixed(2)}';
   }
 
-  Future<void> _openGoogleMaps(EventModel event) async {
-    final lat = event.location.latitude;
-    final lng = event.location.longitude;
-    
-    // Pastikan koordinat valid sebelum membuat URI
-    if (lat == 0 && lng == 0) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Koordinat lokasi tidak ditemukan.')),
+  Future<void> _openGoogleMaps() async {
+    try {
+      final lat = _localEvent.location.latitude;
+      final lng = _localEvent.location.longitude;
+      
+      final googleMapsUrl = 'https://www.google.com/maps/search/?api=1&query=$lat,$lng';
+      
+      print('🗺️ Opening Google Maps: $googleMapsUrl');
+      
+      final uri = Uri.parse(googleMapsUrl);
+      
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication,
         );
+      } else {
+        final mapsUrl = 'https://maps.google.com/?q=$lat,$lng';
+        final mapsUri = Uri.parse(mapsUrl);
+        
+        if (await canLaunchUrl(mapsUri)) {
+          await launchUrl(
+            mapsUri,
+            mode: LaunchMode.externalApplication,
+          );
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Tidak dapat membuka Google Maps.'),
+              ),
+            );
+          }
+        }
       }
-      return;
-    }
-
-    final googleMapsUrl = 'https://www.google.com/maps/search/?api=1&query=$lat,$lng'; // Menggunakan format yang benar
-    final uri = Uri.parse(googleMapsUrl);
-    
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(
-        uri,
-        mode: LaunchMode.externalApplication,
-      );
-    } else {
+    } catch (e) {
+      print('❌ Error opening maps: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Tidak dapat membuka Google Maps.')),
+          SnackBar(content: Text('Error: $e')),
         );
       }
     }

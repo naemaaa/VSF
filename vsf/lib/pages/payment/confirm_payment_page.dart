@@ -56,25 +56,10 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
             isPaid: true, // Mark as paid
           );
 
-          await registrationBox.add(completedRegistration);
+          await registrationBox.put(completedRegistration.id, completedRegistration);
           print('✅ Registration saved');
           
-          // Update event volunteer count
-          final eventBox = await Hive.openBox<EventModel>('events');
-          final eventList = eventBox.values.where(
-            (e) => e.id == widget.event.id,
-          ).toList();
-          
-          if (eventList.isEmpty) {
-            throw Exception('Event not found');
-          }
-
-          final event = eventList.first;
-          event.addVolunteer(widget.registration.volunteerId);
-          await eventBox.put(event.key, event);
-          print('✅ Event updated with new volunteer');
-
-          // 📊 UPDATE USER STATS
+          // ✅ PERBAIKAN #3: Update atau buat UserStats setelah payment sukses
           try {
             final statsBox = await Hive.openBox<UserStats>('user_stats');
             UserStats? userStats;
@@ -104,6 +89,9 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
               print('✅ Updated UserStats: ${widget.registration.volunteerId}');
               print('   Participations: ${userStats.totalParticipations}, Donations: ${userStats.totalDonations}');
             }
+            
+            // ✅ Trigger Hive listener di HomePage untuk refresh UI
+            print('📢 Stats updated, HomePage listener will refresh');
           } catch (e) {
             print('⚠️ Error updating UserStats: $e');
             // Jangan stop flow, continue ke notification

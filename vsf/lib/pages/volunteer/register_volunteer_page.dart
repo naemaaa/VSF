@@ -100,6 +100,16 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
     try {
       print('📝 Creating registration...');
       
+      // ✅ PERBAIKAN #2A: Tambahkan user ke event SEBELUM payment (optimistic update)
+      final updatedEvent = widget.event.copyWith(
+        registeredVolunteerIds: [...widget.event.registeredVolunteerIds, widget.currentUser.id],
+        currentVolunteerCount: widget.event.currentVolunteerCount + 1,
+      );
+      
+      final eventBox = Hive.box<EventModel>('events');
+      await eventBox.put(updatedEvent.id, updatedEvent);
+      print('✅ Event updated optimistically in Hive');
+      
       // Buat registration object
       final registration = VolunteerRegistration(
         id: 'reg_${DateTime.now().millisecondsSinceEpoch}',
@@ -118,26 +128,25 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
         agreementNonRefundable: _agreementChecked,
       );
 
-      // Save to Hive dulu (sementara)
+      // Save to Hive
       final regBox = Hive.box<VolunteerRegistration>('registrations');
       await regBox.put(registration.id, registration);
-      print('✅ Registration saved to Hive');
+      print('✅ Registration saved to Hive (pending payment)');
 
       if (mounted) {
         setState(() => _isProcessing = false);
         
-        // Navigate to payment
+        // Navigate ke payment dengan updated event
         final result = await Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => PaymentPage(
               registration: registration,
-              event: widget.event,
+              event: updatedEvent, // ✅ Pass updated event
             ),
           ),
         );
 
-        // ⬅️ JIKA PAYMENT BERHASIL, UPDATE API
         if (result == true && mounted) {
           print('💳 Payment successful, updating API...');
           
@@ -157,7 +166,7 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
               Navigator.pop(context, true); // Return true ke activity_detail
             }
           } else {
-            print('⚠️ API update failed');
+            print('⚠️ API update failed, but data saved locally');
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
@@ -169,13 +178,45 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
             }
           }
         } else {
-          // Payment dibatalkan, hapus registrasi sementara
+          // ✅ PERBAIKAN: Jika cancel, ROLLBACK di Hive
+          print('❌ Payment cancelled or failed, rolling back...');
+          // Ambil event original dari Hive, bukan dari widget (widget mungkin sudah stale)
+          final originalEvent = eventBox.get(widget.event.id) ?? widget.event;
+          final eventToRestore = originalEvent.copyWith(
+            registeredVolunteerIds: [...originalEvent.registeredVolunteerIds]..remove(widget.currentUser.id),
+            currentVolunteerCount: (originalEvent.currentVolunteerCount - 1).clamp(0, originalEvent.targetVolunteerCount),
+          );
+          await eventBox.put(eventToRestore.id, eventToRestore);
           await regBox.delete(registration.id);
-          print('❌ Payment cancelled, registration deleted');
+          print('✅ Rollback completed');
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Pendaftaran dibatalkan'),
+                backgroundColor: Colors.grey,
+              ),
+            );
+          }
         }
       }
     } catch (e) {
       print('❌ Error in registration: $e');
+      
+      // ✅ Rollback jika error - gunakan event dari Hive, bukan widget
+      try {
+        final eventBox = Hive.box<EventModel>('events');
+        final originalEvent = eventBox.get(widget.event.id) ?? widget.event;
+        final eventToRestore = originalEvent.copyWith(
+          registeredVolunteerIds: [...originalEvent.registeredVolunteerIds]..remove(widget.currentUser.id),
+          currentVolunteerCount: (originalEvent.currentVolunteerCount - 1).clamp(0, originalEvent.targetVolunteerCount),
+        );
+        await eventBox.put(eventToRestore.id, eventToRestore);
+        print('✅ Rollback on error completed');
+      } catch (e2) {
+        print('⚠️ Rollback failed: $e2');
+      }
+      
       if (mounted) {
         setState(() => _isProcessing = false);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -505,7 +546,6 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
                                     : Colors.orange[600],
                               ),
                             ),
-                            const SizedBox(height: 4),
                             Text(
                               widget.event.formattedPrice,
                               style: TextStyle(
