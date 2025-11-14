@@ -45,11 +45,9 @@ class _RegisterIndividualPageState extends State<RegisterIndividualPage> {
 
     try {
       final email = _emailController.text.trim().toLowerCase();
-      // KIRIM PASSWORD MENTAH
       final password = _passwordController.text;
       
 
-      // Panggil Service untuk Auth Lokal dan Sinkronisasi ID ke Supabase
       final uid = await _authService.registerAndSyncId(
         email: email,
         userType: UserType.individual,
@@ -191,7 +189,6 @@ class _RegisterIndividualPageState extends State<RegisterIndividualPage> {
                 ),
                 const SizedBox(height: 16),
 
-                // Kata Sandi
                 TextFormField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
@@ -225,7 +222,6 @@ class _RegisterIndividualPageState extends State<RegisterIndividualPage> {
                 ),
                 const SizedBox(height: 16),
 
-                // Ulangi Kata Sandi
                 TextFormField(
                   controller: _confirmPasswordController,
                   obscureText: _obscureConfirmPassword,
@@ -260,7 +256,6 @@ class _RegisterIndividualPageState extends State<RegisterIndividualPage> {
                 const SizedBox(height: 16),
 
                 
-                // Register Button
                 ElevatedButton(
                   onPressed: _isLoading ? null : _register,
                   style: ElevatedButton.styleFrom(

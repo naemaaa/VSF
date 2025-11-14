@@ -69,17 +69,15 @@ class _HomePageState extends State<HomePage> {
 
   void _loadUserStats(String userId) {
     try {
-      UserStats? stats;
-      for (var stat in _statsBox.values) {
-        if (stat.userId == userId) {
-          stats = stat;
-          break;
-        }
-      }
+      // PERBAIKAN: Gunakan userId sebagai kunci untuk mendapatkan UserStats secara langsung
+      UserStats? stats = _statsBox.get(userId); 
 
       if (stats == null) {
+        // Jika tidak ada data UserStats untuk user ini di Hive, buat baru.
         stats = UserStats(userId: userId);
-        _statsBox.add(stats);
+        
+        // PERBAIKAN KRUSIAL: Simpan UserStats dengan userId sebagai kunci (put() bukan add())
+        _statsBox.put(userId, stats); 
       }
 
       if (mounted) {

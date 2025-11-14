@@ -93,6 +93,7 @@ class EventService {
     print('💾 Single event cached: ${event.id}');
   }
 
+  // ==================== FETCH METHODS (API + CACHE) ====================
   
   Future<List<EventModel>> getAllEvents({bool forceRefresh = false}) async {
     final eventBox = Hive.box<EventModel>('events');
@@ -137,6 +138,7 @@ class EventService {
     final cachedEvent = eventBox.get(id);
     
     try {
+      // PENTING: Force refresh dari API untuk mendapatkan status volunteer terbaru
       final response = await http.get(
         Uri.parse('$SUPABASE_URL/rest/v1/events?id=eq.$id&select=*&limit=1'),
         headers: _headers,
@@ -212,56 +214,40 @@ class EventService {
       final payload = _eventToJson(eventToSave);
 
       final response = await http.post(
-        Uri.parse('$SUPABASE_URL/rest/v1/events?select=*'),
+        Uri.parse('$SUPABASE_URL/rest/v1/events?select=*'), // ⬅️ PERBAIKAN
         headers: {
           ..._headers,
-          'Prefer': 'return=representation',
+          'Prefer': 'return=representation', // ⬅️ PERBAIKAN
         },
         body: jsonEncode(payload),
       ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 201 || response.statusCode == 200) {
-        print('✅ Event created successfully! Status: ${response.statusCode}');
+        print('✅ Event created successfully!');
         
         // 4. Parse response & update cache
-        final trimmedBody = response.body.trim();
-        print('📦 Response body length: ${trimmedBody.length}');
-        
-        if (trimmedBody.isNotEmpty && trimmedBody != '""' && trimmedBody != "''") {
+        if (response.body.isNotEmpty) { // ⬅️ PERBAIKAN: Cek dulu apakah body tidak kosong
           try {
-            final dynamic responseData = jsonDecode(trimmedBody);
-            
-            // Handle both array and single object response
-            if (responseData is List && responseData.isNotEmpty) {
+            final List<dynamic> responseData = jsonDecode(response.body);
+            if (responseData.isNotEmpty) {
               final createdEvent = EventModel.fromJson(responseData.first);
               await _updateSingleCache(createdEvent);
-              print('💾 Event cached from API response (array)');
-              return createdEvent;
-            } else if (responseData is Map<String, dynamic>) {
-              final createdEvent = EventModel.fromJson(responseData);
-              await _updateSingleCache(createdEvent);
-              print('💾 Event cached from API response (object)');
               return createdEvent;
             }
           } catch (e) {
             print('⚠️ Failed to parse response: $e');
-            print('⚠️ Response body was: "$trimmedBody"');
           }
-        } else {
-          print('⚠️ Empty or invalid response body, using fallback');
         }
         
-        // Fallback: return event yang kita kirim & cache
+        // Fallback: return event yang kita kirim
         await _updateSingleCache(eventToSave);
-        print('💾 Event cached (fallback mode)');
         return eventToSave;
       } else {
         print('❌ Create failed: ${response.statusCode} - ${response.body}');
         return null;
       }
-    } catch (e, stackTrace) {
+    } catch (e) {
       print('❌ Create error: $e');
-      print('Stack trace: $stackTrace');
       return null;
     }
   }
@@ -373,37 +359,57 @@ class EventService {
   }
 
   // ==================== VOLUNTEER REGISTRATION ====================
-    Future<bool> incrementVolunteerCount(String eventId, String volunteerId) async {
+  
+  /// FUNGSI INI HANYA UNTUK UPDATE EVENT, BUKAN REGISTRASI PENUH
+  Future<bool> incrementVolunteerCount(String eventId, String volunteerId) async {
     try {
-      // Ambil event terbaru (dari cache/API)
-      final event = await getEventById(eventId);
-      if (event == null || event.isUserRegistered(volunteerId)) return false; 
-      
-      // Buat data baru untuk PATCH API dan Cache
-      final updatedIds = [...event.registeredVolunteerIds];
-      updatedIds.add(volunteerId);
+      // 1. Ambil data event saat ini (penting untuk perhitungan yang akurat)
+      final event = await getEventById(eventId); 
+      if (event == null) return false;
 
+      final updatedIds = [...event.registeredVolunteerIds];
+      if (!updatedIds.contains(volunteerId)) {
+        updatedIds.add(volunteerId);
+      } else {
+        // ID sudah ada, tidak perlu update
+        return true; 
+      }
+      
       final newCount = event.currentVolunteerCount + 1;
 
-      // Klon EventModel dengan data yang diperbarui untuk cache lokal
-      final updatedEvent = event.copyWith(
-          currentVolunteerCount: newCount,
-          registeredVolunteerIds: updatedIds,
-      );
-
-      // PATCH ke Supabase
+      // 2. PATCH ke Supabase
       final response = await http.patch(
         Uri.parse('$SUPABASE_URL/rest/v1/events?id=eq.$eventId'),
         headers: _headers,
         body: jsonEncode({
-          'current_volunteer_count': newCount,
+          'current_volunteer_count': newCount, 
           'registered_volunteer_ids': updatedIds,
         }),
       );
 
       if (response.statusCode == 200 || response.statusCode == 204) {
-        // PERBAIKAN: Update Hive Cache setelah API berhasil
-        await _updateSingleCache(updatedEvent); 
+        // 3. PERBAIKAN: Update cache lokal SEGERA setelah PATCH berhasil
+        final updatedEventLocally = EventModel(
+          id: event.id,
+          title: event.title,
+          description: event.description,
+          imageUrl: event.imageUrl,
+          organizerId: event.organizerId,
+          organizerName: event.organizerName,
+          organizerImageUrl: event.organizerImageUrl,
+          location: event.location,
+          eventStartTime: event.eventStartTime,
+          eventEndTime: event.eventEndTime,
+          targetVolunteerCount: event.targetVolunteerCount,
+          currentVolunteerCount: newCount, // Menggunakan count yang baru
+          participationFeeIdr: event.participationFeeIdr,
+          category: event.category,
+          isActive: event.isActive,
+          createdAt: event.createdAt,
+          registeredVolunteerIds: updatedIds, // Menggunakan list ID yang baru
+        );
+        await _updateSingleCache(updatedEventLocally);
+        
         return true;
       }
       return false;
@@ -413,27 +419,21 @@ class EventService {
     }
   }
 
+  // FUNGSI INI DIGUNAKAN UNTUK PEMBATALAN REGISTRASI (dipanggil dari ActivityDetailPage)
   Future<bool> decrementVolunteerCount(String eventId, String volunteerId) async {
     try {
-      // Ambil event terbaru (dari cache/API)
-      final event = await getEventById(eventId);
-      if (event == null || !event.isUserRegistered(volunteerId)) return false;
+      // Dapatkan data event terbaru dari API untuk memastikan konsistensi
+      final event = await getEventById(eventId); 
+      if (event == null) return false;
 
-      // Buat data baru untuk PATCH API dan Cache
       final updatedIds = [...event.registeredVolunteerIds];
       updatedIds.remove(volunteerId);
-
-      final newCount = event.currentVolunteerCount > 0 
-          ? event.currentVolunteerCount - 1 
-          : 0;
-
-      // Klon EventModel dengan data yang diperbarui untuk cache lokal
-      final updatedEvent = event.copyWith(
-          currentVolunteerCount: newCount,
-          registeredVolunteerIds: updatedIds,
-      );
       
-      // PATCH ke Supabase
+      final newCount = event.currentVolunteerCount > 0 
+              ? event.currentVolunteerCount - 1 
+              : 0;
+
+      // Kirim PATCH request ke Supabase
       final response = await http.patch(
         Uri.parse('$SUPABASE_URL/rest/v1/events?id=eq.$eventId'),
         headers: _headers,
@@ -444,8 +444,28 @@ class EventService {
       );
 
       if (response.statusCode == 200 || response.statusCode == 204) {
-        // PERBAIKAN: Update Hive Cache setelah API berhasil
-        await _updateSingleCache(updatedEvent);
+        // Update cache lokal SEGERA setelah PATCH berhasil
+        final updatedEventLocally = EventModel(
+          id: event.id,
+          title: event.title,
+          description: event.description,
+          imageUrl: event.imageUrl,
+          organizerId: event.organizerId,
+          organizerName: event.organizerName,
+          organizerImageUrl: event.organizerImageUrl,
+          location: event.location,
+          eventStartTime: event.eventStartTime,
+          eventEndTime: event.eventEndTime,
+          targetVolunteerCount: event.targetVolunteerCount,
+          currentVolunteerCount: newCount,
+          participationFeeIdr: event.participationFeeIdr,
+          category: event.category,
+          isActive: event.isActive,
+          createdAt: event.createdAt,
+          registeredVolunteerIds: updatedIds,
+        );
+        await _updateSingleCache(updatedEventLocally);
+        
         return true;
       }
       return false;
@@ -455,5 +475,3 @@ class EventService {
     }
   }
 }
-  
-  

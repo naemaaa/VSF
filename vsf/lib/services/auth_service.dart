@@ -59,7 +59,7 @@ class SupabaseAuthService {
     final userBox = Hive.box<UserModel>(_userBoxName);
     
     if (userBox.values.any((user) => user.email.toLowerCase() == email.toLowerCase())) {
-      throw Exception('Email sudah terdaftar secara lokal.');
+      throw Exception('Email sudah terdaftar.');
     }
     
     final String localUid = _generateLocalUniqueId(userType);
@@ -126,14 +126,29 @@ class SupabaseAuthService {
     );
 
     if (response.statusCode != 201) {
-      throw Exception('Gagal sinkronisasi ID user ke Supabase: ${response.body}');
+      // START: Penanganan Error Supabase yang Lebih Bersih
+      try {
+        final errorBody = jsonDecode(response.body);
+        final errorCode = errorBody['code'];
+        final errorMessage = errorBody['message'] ?? 'Kesalahan tidak diketahui.';
+
+        // Cek kode kesalahan UNIQUE CONSTRAINT VIOLATION (Postgres/Supabase: 23505)
+        if (errorCode == '23505') {
+          throw Exception('Email sudah terdaftar. Silakan gunakan email lain.');
+        }
+
+        // Untuk error Supabase lainnya
+        throw Exception('Gagal sinkronisasi data. Error: $errorMessage');
+
+      } catch (e) {
+        // Jika gagal decode JSON (bukan format JSON) atau error koneksi
+        throw Exception('Gagal sinkronisasi data. Status: ${response.statusCode}');
+      }
+      // END: Penanganan Error Supabase yang Lebih Bersih
     }
     print('✅ Metadata user $uid berhasil disinkronkan ke Supabase.');
   }
 
-  // ===============================================
-  // B. SIGN IN (Login) - Menggunakan Otentikasi Lokal (Hive)
-  // ===============================================
 
   /// Login user menggunakan email dan password, diverifikasi secara lokal
   Future<UserModel?> signInUser(String email, String password) async {
