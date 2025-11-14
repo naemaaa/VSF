@@ -93,7 +93,6 @@ class EventService {
     print('💾 Single event cached: ${event.id}');
   }
 
-  // ==================== FETCH METHODS (API + CACHE) ====================
   
   Future<List<EventModel>> getAllEvents({bool forceRefresh = false}) async {
     final eventBox = Hive.box<EventModel>('events');
@@ -213,40 +212,56 @@ class EventService {
       final payload = _eventToJson(eventToSave);
 
       final response = await http.post(
-        Uri.parse('$SUPABASE_URL/rest/v1/events?select=*'), // ⬅️ PERBAIKAN
+        Uri.parse('$SUPABASE_URL/rest/v1/events?select=*'),
         headers: {
           ..._headers,
-          'Prefer': 'return=representation', // ⬅️ PERBAIKAN
+          'Prefer': 'return=representation',
         },
         body: jsonEncode(payload),
       ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 201 || response.statusCode == 200) {
-        print('✅ Event created successfully!');
+        print('✅ Event created successfully! Status: ${response.statusCode}');
         
         // 4. Parse response & update cache
-        if (response.body.isNotEmpty) { // ⬅️ PERBAIKAN: Cek dulu apakah body tidak kosong
+        final trimmedBody = response.body.trim();
+        print('📦 Response body length: ${trimmedBody.length}');
+        
+        if (trimmedBody.isNotEmpty && trimmedBody != '""' && trimmedBody != "''") {
           try {
-            final List<dynamic> responseData = jsonDecode(response.body);
-            if (responseData.isNotEmpty) {
+            final dynamic responseData = jsonDecode(trimmedBody);
+            
+            // Handle both array and single object response
+            if (responseData is List && responseData.isNotEmpty) {
               final createdEvent = EventModel.fromJson(responseData.first);
               await _updateSingleCache(createdEvent);
+              print('💾 Event cached from API response (array)');
+              return createdEvent;
+            } else if (responseData is Map<String, dynamic>) {
+              final createdEvent = EventModel.fromJson(responseData);
+              await _updateSingleCache(createdEvent);
+              print('💾 Event cached from API response (object)');
               return createdEvent;
             }
           } catch (e) {
             print('⚠️ Failed to parse response: $e');
+            print('⚠️ Response body was: "$trimmedBody"');
           }
+        } else {
+          print('⚠️ Empty or invalid response body, using fallback');
         }
         
-        // Fallback: return event yang kita kirim
+        // Fallback: return event yang kita kirim & cache
         await _updateSingleCache(eventToSave);
+        print('💾 Event cached (fallback mode)');
         return eventToSave;
       } else {
         print('❌ Create failed: ${response.statusCode} - ${response.body}');
         return null;
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       print('❌ Create error: $e');
+      print('Stack trace: $stackTrace');
       return null;
     }
   }
@@ -358,27 +373,40 @@ class EventService {
   }
 
   // ==================== VOLUNTEER REGISTRATION ====================
-  
-  Future<bool> incrementVolunteerCount(String eventId, String volunteerId) async {
+    Future<bool> incrementVolunteerCount(String eventId, String volunteerId) async {
     try {
+      // Ambil event terbaru (dari cache/API)
       final event = await getEventById(eventId);
-      if (event == null) return false;
-
+      if (event == null || event.isUserRegistered(volunteerId)) return false; 
+      
+      // Buat data baru untuk PATCH API dan Cache
       final updatedIds = [...event.registeredVolunteerIds];
-      if (!updatedIds.contains(volunteerId)) {
-        updatedIds.add(volunteerId);
-      }
+      updatedIds.add(volunteerId);
 
+      final newCount = event.currentVolunteerCount + 1;
+
+      // Klon EventModel dengan data yang diperbarui untuk cache lokal
+      final updatedEvent = event.copyWith(
+          currentVolunteerCount: newCount,
+          registeredVolunteerIds: updatedIds,
+      );
+
+      // PATCH ke Supabase
       final response = await http.patch(
         Uri.parse('$SUPABASE_URL/rest/v1/events?id=eq.$eventId'),
         headers: _headers,
         body: jsonEncode({
-          'current_volunteer_count': event.currentVolunteerCount + 1,
+          'current_volunteer_count': newCount,
           'registered_volunteer_ids': updatedIds,
         }),
       );
 
-      return response.statusCode == 200 || response.statusCode == 204;
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        // PERBAIKAN: Update Hive Cache setelah API berhasil
+        await _updateSingleCache(updatedEvent); 
+        return true;
+      }
+      return false;
     } catch (e) {
       print('❌ Increment error: $e');
       return false;
@@ -387,27 +415,45 @@ class EventService {
 
   Future<bool> decrementVolunteerCount(String eventId, String volunteerId) async {
     try {
+      // Ambil event terbaru (dari cache/API)
       final event = await getEventById(eventId);
-      if (event == null) return false;
+      if (event == null || !event.isUserRegistered(volunteerId)) return false;
 
+      // Buat data baru untuk PATCH API dan Cache
       final updatedIds = [...event.registeredVolunteerIds];
       updatedIds.remove(volunteerId);
 
+      final newCount = event.currentVolunteerCount > 0 
+          ? event.currentVolunteerCount - 1 
+          : 0;
+
+      // Klon EventModel dengan data yang diperbarui untuk cache lokal
+      final updatedEvent = event.copyWith(
+          currentVolunteerCount: newCount,
+          registeredVolunteerIds: updatedIds,
+      );
+      
+      // PATCH ke Supabase
       final response = await http.patch(
         Uri.parse('$SUPABASE_URL/rest/v1/events?id=eq.$eventId'),
         headers: _headers,
         body: jsonEncode({
-          'current_volunteer_count': event.currentVolunteerCount > 0 
-              ? event.currentVolunteerCount - 1 
-              : 0,
+          'current_volunteer_count': newCount,
           'registered_volunteer_ids': updatedIds,
         }),
       );
 
-      return response.statusCode == 200 || response.statusCode == 204;
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        // PERBAIKAN: Update Hive Cache setelah API berhasil
+        await _updateSingleCache(updatedEvent);
+        return true;
+      }
+      return false;
     } catch (e) {
       print('❌ Decrement error: $e');
       return false;
     }
   }
 }
+  
+  

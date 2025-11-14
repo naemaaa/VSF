@@ -4,6 +4,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../../models/event_model.dart';
 import '../../models/user_model.dart';
 import '../../models/volunteer_registration.dart';
+import '../../services/event_service.dart';
 import 'activity_detail_page.dart';
 
 class MyActivitiesPage extends StatefulWidget {
@@ -16,9 +17,11 @@ class MyActivitiesPage extends StatefulWidget {
 }
 
 class _MyActivitiesPageState extends State<MyActivitiesPage> with SingleTickerProviderStateMixin {
+  final EventService _eventService = EventService();
   late TabController _tabController;
   List<EventModel> _registeredEvents = [];
   List<VolunteerRegistration> _registrations = [];
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -27,11 +30,77 @@ class _MyActivitiesPageState extends State<MyActivitiesPage> with SingleTickerPr
     _loadRegisteredEvents();
   }
 
+  bool _isUserStillRegistered(EventModel event) {
+    return event.registeredVolunteerIds.contains(widget.currentUser.id);
+  }
+
+  // ⬅️ PERBAIKAN: Refresh dari API + Cache
+  Future<void> _loadRegisteredEvents() async {
+    if (_isLoading) return;
+    
+    setState(() => _isLoading = true);
+    
+    try {
+      print('🔄 Loading registered events for user: ${widget.currentUser.id}');
+      
+      final registrationBox = Hive.box<VolunteerRegistration>('registrations');
+      final eventBox = Hive.box<EventModel>('events');
+
+      // Get all registrations for current user
+      _registrations = registrationBox.values
+          .where((reg) => reg.volunteerId == widget.currentUser.id)
+          .toList();
+
+      print('📋 Found ${_registrations.length} registrations in Hive');
+
+      // Refresh events from API
+      await _eventService.getAllEvents(forceRefresh: true);
+
+      // Get corresponding events
+      _registeredEvents = _registrations
+          .map((reg) {
+            final event = eventBox.get(reg.eventId);
+            print('Event ${reg.eventId}: ${event != null ? "found" : "NOT FOUND"}');
+            return event;
+          })
+          .whereType<EventModel>()
+          .toList();
+
+      print('✅ Loaded ${_registeredEvents.length} events');
+    } catch (e) {
+      print('❌ Error loading registered events: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  // ⬅️ PERBAIKAN: Refresh saat kembali ke halaman
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadRegisteredEvents();
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
   Widget _buildSmallEventImage(EventModel event) {
     final url = event.imageUrl;
     if (url == null || url.isEmpty) {
       return Container(
-        color: Colors.grey[200],
+        width: 80,
+        height: 80,
+        decoration: BoxDecoration(
+          color: Colors.grey[200],
+          borderRadius: BorderRadius.circular(8),
+        ),
         child: const Icon(Icons.image, size: 32),
       );
     }
@@ -39,7 +108,21 @@ class _MyActivitiesPageState extends State<MyActivitiesPage> with SingleTickerPr
     if (url.startsWith('http') || url.startsWith('https')) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(8),
-        child: Image.network(url, width: 80, height: 80, fit: BoxFit.cover, errorBuilder: (_,__,___) => Container(color: Colors.grey[200], child: const Icon(Icons.broken_image))),
+        child: Image.network(
+          url,
+          width: 80,
+          height: 80,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              color: Colors.grey[200],
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.broken_image),
+          ),
+        ),
       );
     }
 
@@ -54,51 +137,23 @@ class _MyActivitiesPageState extends State<MyActivitiesPage> with SingleTickerPr
     } catch (_) {}
 
     return Container(
-      color: Colors.grey[200],
+      width: 80,
+      height: 80,
+      decoration: BoxDecoration(
+        color: Colors.grey[200],
+        borderRadius: BorderRadius.circular(8),
+      ),
       child: const Icon(Icons.image_not_supported, size: 32),
     );
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
-  void _loadRegisteredEvents() {
-    final registrationBox = Hive.box<VolunteerRegistration>('registrations');
-    final eventBox = Hive.box<EventModel>('events');
-
-    // Get all registrations for current user
-    _registrations = registrationBox.values
-        .where((reg) => reg.volunteerId == widget.currentUser.id)
-        .toList();
-
-    // Get all corresponding events
-    _registeredEvents = _registrations
-        .map((reg) => eventBox.get(reg.eventId))
-        .whereType<EventModel>() // Filter out null values
-        .toList();
-
-    setState(() {});
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Listen for registration or event changes and reload
-    final registrationBox = Hive.box<VolunteerRegistration>('registrations');
-    registrationBox.listenable().addListener(_loadRegisteredEvents);
-    final eventBox = Hive.box<EventModel>('events');
-    eventBox.listenable().addListener(_loadRegisteredEvents);
   }
 
   Widget _buildEventCard(EventModel event, VolunteerRegistration registration) {
     final bool isCompleted = event.isPast;
 
     return GestureDetector(
-      onTap: () {
-        Navigator.push(
+      onTap: () async {
+        // Navigate dan refresh saat kembali
+        await Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => ActivityDetailPage(
@@ -107,6 +162,8 @@ class _MyActivitiesPageState extends State<MyActivitiesPage> with SingleTickerPr
             ),
           ),
         );
+        // Refresh setelah kembali
+        _loadRegisteredEvents();
       },
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
@@ -124,22 +181,12 @@ class _MyActivitiesPageState extends State<MyActivitiesPage> with SingleTickerPr
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Event Info Row
             Padding(
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  // Event Image
-                  Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: _buildSmallEventImage(event),
-                  ),
+                  _buildSmallEventImage(event),
                   const SizedBox(width: 16),
-                  // Event Details
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -186,7 +233,6 @@ class _MyActivitiesPageState extends State<MyActivitiesPage> with SingleTickerPr
                 ],
               ),
             ),
-            // Action Row
             Container(
               decoration: BoxDecoration(
                 border: Border(
@@ -231,8 +277,8 @@ class _MyActivitiesPageState extends State<MyActivitiesPage> with SingleTickerPr
                   else
                     Expanded(
                       child: TextButton(
-                        onPressed: () {
-                          Navigator.push(
+                        onPressed: () async {
+                          await Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (context) => ActivityDetailPage(
@@ -241,6 +287,7 @@ class _MyActivitiesPageState extends State<MyActivitiesPage> with SingleTickerPr
                               ),
                             ),
                           );
+                          _loadRegisteredEvents();
                         },
                         style: TextButton.styleFrom(
                           backgroundColor: Colors.blue[50],
@@ -264,22 +311,26 @@ class _MyActivitiesPageState extends State<MyActivitiesPage> with SingleTickerPr
 
   @override
   Widget build(BuildContext context) {
-    // Split events into upcoming and past
     final upcomingEvents = _registeredEvents.where((e) => !e.isPast).toList();
     final pastEvents = _registeredEvents.where((e) => e.isPast).toList();
 
-    // Sort by date
     upcomingEvents.sort((a, b) => a.eventStartTime.compareTo(b.eventStartTime));
-    pastEvents.sort((a, b) => b.eventStartTime.compareTo(a.eventStartTime)); // Reverse for past events
+    pastEvents.sort((a, b) => b.eventStartTime.compareTo(a.eventStartTime));
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Aktivitas Saya'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadRegisteredEvents,
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
-          tabs: const [
-            Tab(text: 'Mendatang'),
-            Tab(text: 'Riwayat'),
+          tabs: [
+            Tab(text: 'Mendatang (${upcomingEvents.length})'),
+            Tab(text: 'Riwayat (${pastEvents.length})'),
           ],
           labelStyle: const TextStyle(
             fontWeight: FontWeight.bold,
@@ -289,67 +340,75 @@ class _MyActivitiesPageState extends State<MyActivitiesPage> with SingleTickerPr
           ),
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          // Upcoming Events Tab
-          upcomingEvents.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.event_available,
-                          size: 64, color: Colors.grey[400]),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Belum ada aktivitas mendatang',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.grey[600],
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : TabBarView(
+              controller: _tabController,
+              children: [
+                // Upcoming Events Tab
+                upcomingEvents.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.event_available,
+                                size: 64, color: Colors.grey[400]),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Belum ada aktivitas mendatang',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : RefreshIndicator(
+                        onRefresh: _loadRegisteredEvents,
+                        child: ListView.builder(
+                          itemCount: upcomingEvents.length,
+                          itemBuilder: (context, index) {
+                            final event = upcomingEvents[index];
+                            final registration = _registrations.firstWhere(
+                                (r) => r.eventId == event.id);
+                            return _buildEventCard(event, registration);
+                          },
                         ),
                       ),
-                    ],
-                  ),
-                )
-              : ListView.builder(
-                  itemCount: upcomingEvents.length,
-                  itemBuilder: (context, index) {
-                    final event = upcomingEvents[index];
-                    final registration = _registrations.firstWhere(
-                        (r) => r.eventId == event.id);
-                    return _buildEventCard(event, registration);
-                  },
-                ),
 
-          // Past Events Tab
-          pastEvents.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.history, size: 64, color: Colors.grey[400]),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Belum ada riwayat aktivitas',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.grey[600],
+                // Past Events Tab
+                pastEvents.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.history, size: 64, color: Colors.grey[400]),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Belum ada riwayat aktivitas',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : RefreshIndicator(
+                        onRefresh: _loadRegisteredEvents,
+                        child: ListView.builder(
+                          itemCount: pastEvents.length,
+                          itemBuilder: (context, index) {
+                            final event = pastEvents[index];
+                            final registration = _registrations.firstWhere(
+                                (r) => r.eventId == event.id);
+                            return _buildEventCard(event, registration);
+                          },
                         ),
                       ),
-                    ],
-                  ),
-                )
-              : ListView.builder(
-                  itemCount: pastEvents.length,
-                  itemBuilder: (context, index) {
-                    final event = pastEvents[index];
-                    final registration = _registrations.firstWhere(
-                        (r) => r.eventId == event.id);
-                    return _buildEventCard(event, registration);
-                  },
-                ),
-        ],
-      ),
+              ],
+            ),
     );
   }
 }

@@ -107,6 +107,47 @@ class EventModel extends HiveObject {
     );
   }
 
+  // ==================== METHOD copyWith BARU ====================
+  // Digunakan untuk membuat EventModel baru dengan beberapa field yang diubah
+  EventModel copyWith({
+    String? id,
+    String? title,
+    String? description,
+    String? imageUrl,
+    String? organizerId,
+    String? organizerName,
+    String? organizerImageUrl,
+    EventLocationModel? location,
+    DateTime? eventStartTime,
+    DateTime? eventEndTime,
+    int? targetVolunteerCount,
+    int? currentVolunteerCount,
+    int? participationFeeIdr,
+    String? category,
+    bool? isActive,
+    DateTime? createdAt,
+    List<String>? registeredVolunteerIds,
+  }) {
+    return EventModel(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      imageUrl: imageUrl ?? this.imageUrl,
+      organizerId: organizerId ?? this.organizerId,
+      organizerName: organizerName ?? this.organizerName,
+      organizerImageUrl: organizerImageUrl ?? this.organizerImageUrl,
+      location: location ?? this.location,
+      eventStartTime: eventStartTime ?? this.eventStartTime,
+      eventEndTime: eventEndTime ?? this.eventEndTime,
+      targetVolunteerCount: targetVolunteerCount ?? this.targetVolunteerCount,
+      currentVolunteerCount: currentVolunteerCount ?? this.currentVolunteerCount, 
+      participationFeeIdr: participationFeeIdr ?? this.participationFeeIdr,
+      category: category ?? this.category,
+      isActive: isActive ?? this.isActive,
+      createdAt: createdAt ?? this.createdAt,
+      registeredVolunteerIds: registeredVolunteerIds ?? this.registeredVolunteerIds,
+    );
+  }
 
   // ==================== GETTERS (Diperlukan oleh UI) ====================
 

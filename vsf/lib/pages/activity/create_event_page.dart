@@ -2,8 +2,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';  
-import 'package:path_provider/path_provider.dart';
-import 'package:hive/hive.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geocoding/geocoding.dart';
 import '../../widgets/location_picker.dart'; 
@@ -44,10 +42,9 @@ class _CreateEventPageState extends State<CreateEventPage> {
   DateTime? _endDateTime;
   File? _pickedImage;
   
-  bool _isSubmitting = false; // Loading state
-  bool _isManualAddressDisabled = false; // State untuk menonaktifkan field manual
+  bool _isSubmitting = false;
+  bool _isManualAddressDisabled = false;
   
-  // List data (dipertahankan)
   final List<String> _categories = [
     'Pendidikan', 'Lingkungan', 'Kesehatan', 'Sosial', 'Anak-anak'
   ];
@@ -95,7 +92,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
       
       if (e.location.latitude != 0 && e.location.longitude != 0) {
         _selectedLocation = LatLng(e.location.latitude, e.location.longitude);
-        _isManualAddressDisabled = true; // Non-aktifkan jika lokasi sudah ada
+        _isManualAddressDisabled = true;
       }
     }
   }
@@ -103,7 +100,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
   Future<void> _handleMapTap(LatLng position) async {
     setState(() {
       _selectedLocation = position;
-      _isManualAddressDisabled = true; // Aktifkan penonaktifan field manual
+      _isManualAddressDisabled = true;
     });
     
     try {
@@ -115,11 +112,9 @@ class _CreateEventPageState extends State<CreateEventPage> {
       if (placemarks.isNotEmpty) {
         final place = placemarks.first;
         
-        // Update controllers
         _districtController.text = place.subLocality ?? '';
         _villageController.text = place.locality ?? '';
 
-        // Update dropdown states
         setState(() {
           final province = place.administrativeArea;
           if (province != null && _provinces.contains(province)) {
@@ -196,73 +191,84 @@ class _CreateEventPageState extends State<CreateEventPage> {
 
     setState(() => _isSubmitting = true);
 
-    final isNewEvent = widget.existingEvent == null;
-    final id = widget.existingEvent?.id ?? 
-        'event_${DateTime.now().millisecondsSinceEpoch}';
-    
-    // 1. Buat EventLocationModel
-    final location = EventLocationModel(
-      country: _selectedCountry ?? '',
-      province: _selectedProvince ?? '',
-      city: _selectedCity ?? '',
-      district: _districtController.text,
-      village: _villageController.text,
-      latitude: _selectedLocation!.latitude,
-      longitude: _selectedLocation!.longitude,
-    );
-
-    // 2. Buat EventModel
-    final eventToSubmit = EventModel(
-      id: id,
-      title: _titleController.text,
-      description: _descController.text,
-      // Jika edit dan tidak ada gambar baru, imageUrl dari existingEvent akan digunakan di service
-      imageUrl: widget.existingEvent?.imageUrl, 
-      organizerId: widget.currentUser.id,
-      organizerName: widget.currentUser.fullName ?? 
-                     widget.currentUser.organizationName ?? '-',
-      organizerImageUrl: widget.currentUser.profileImagePath,
-      location: location,
-      eventStartTime: _startDateTime!.toUtc(),
-      eventEndTime: _endDateTime!.toUtc(),
-      targetVolunteerCount: int.tryParse(_targetVolunteerController.text) ?? 0,
-      currentVolunteerCount: widget.existingEvent?.currentVolunteerCount ?? 0,
-      participationFeeIdr: int.tryParse(_feeController.text) ?? 0,
-      category: _selectedCategory ?? '',
-      isActive: true,
-      createdAt: widget.existingEvent?.createdAt ?? DateTime.now().toUtc(),
-      registeredVolunteerIds: widget.existingEvent?.registeredVolunteerIds ?? [],
-    );
-
-    File? fileToUpload;
-    if (_pickedImage != null) {
-      fileToUpload = _pickedImage;
-    }
-
-    // 4. Call API
-    EventModel? resultEvent;
-    if (isNewEvent) {
-      await _eventService.createEvent(eventToSubmit, fileToUpload);
-      resultEvent = eventToSubmit; // misal mau pakai event yang sama aja
-    } else {
-      await _eventService.updateEvent(eventToSubmit, fileToUpload);
-      resultEvent = eventToSubmit; // misal mau pakai event yang sama aja
-
-    }
-    
-    setState(() => _isSubmitting = false);
-    
-    // 5. Handle result
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${isNewEvent ? 'Kegiatan berhasil didaftarkan' : 'Kegiatan berhasil diperbarui'}!'),
-          backgroundColor: Colors.green,
-        ),
+    try {
+      final isNewEvent = widget.existingEvent == null;
+      final id = widget.existingEvent?.id ?? 
+          'event_${DateTime.now().millisecondsSinceEpoch}';
+      
+      final location = EventLocationModel(
+        country: _selectedCountry ?? '',
+        province: _selectedProvince ?? '',
+        city: _selectedCity ?? '',
+        district: _districtController.text,
+        village: _villageController.text,
+        latitude: _selectedLocation!.latitude,
+        longitude: _selectedLocation!.longitude,
       );
-      Navigator.pop(context, true);
+
+      final eventToSubmit = EventModel(
+        id: id,
+        title: _titleController.text,
+        description: _descController.text,
+        imageUrl: widget.existingEvent?.imageUrl, 
+        organizerId: widget.currentUser.id,
+        organizerName: widget.currentUser.fullName ?? 
+                       widget.currentUser.organizationName ?? '-',
+        organizerImageUrl: widget.currentUser.profileImagePath,
+        location: location,
+        eventStartTime: _startDateTime!.toUtc(),
+        eventEndTime: _endDateTime!.toUtc(),
+        targetVolunteerCount: int.tryParse(_targetVolunteerController.text) ?? 0,
+        currentVolunteerCount: widget.existingEvent?.currentVolunteerCount ?? 0,
+        participationFeeIdr: int.tryParse(_feeController.text) ?? 0,
+        category: _selectedCategory ?? '',
+        isActive: true,
+        createdAt: widget.existingEvent?.createdAt ?? DateTime.now().toUtc(),
+        registeredVolunteerIds: widget.existingEvent?.registeredVolunteerIds ?? [],
+      );
+
+      File? fileToUpload = _pickedImage;
+
+      EventModel? resultEvent;
+      if (isNewEvent) {
+        resultEvent = await _eventService.createEvent(eventToSubmit, fileToUpload);
+      } else {
+        resultEvent = await _eventService.updateEvent(eventToSubmit, fileToUpload);
+      }
+      
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+        
+        if (resultEvent != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${isNewEvent ? 'Kegiatan berhasil didaftarkan' : 'Kegiatan berhasil diperbarui'}!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.pop(context, true);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Gagal menyimpan kegiatan. Coba lagi.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('Error in _submit: $e');
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Terjadi kesalahan: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
-    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -417,7 +423,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
                     fillColor: Colors.grey[100],
                   ),
                   validator: (v) => v == null || v.isEmpty ? 'Kecamatan wajib diisi' : null,
-                  enabled: !_isManualAddressDisabled, // Disabled jika dipilih di peta
+                  enabled: !_isManualAddressDisabled,
                 ),
                 const SizedBox(height: 8),
                 TextFormField(
@@ -429,12 +435,10 @@ class _CreateEventPageState extends State<CreateEventPage> {
                     fillColor: Colors.grey[100],
                   ),
                   validator: (v) => v == null || v.isEmpty ? 'Desa/Kelurahan wajib diisi' : null,
-                  enabled: !_isManualAddressDisabled, // Disabled jika dipilih di peta
+                  enabled: !_isManualAddressDisabled,
                 ),
-                const SizedBox(height: 8),
-                
-
                 const SizedBox(height: 16),
+                
                 const Text('Tanggal & Waktu Mulai', style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 InkWell(

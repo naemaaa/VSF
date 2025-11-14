@@ -1,7 +1,5 @@
 // pages/login_page.dart
 import 'package:flutter/material.dart';
-// import 'package:crypto/crypto.dart'; // DIHAPUS
-// import 'dart:convert'; // DIHAPUS
 import '../../services/session_service.dart';
 import '../../services/auth_service.dart'; // Diperbaiki, ganti auth_service
 import '../main_screen.dart';
@@ -248,69 +246,9 @@ class _LoginPageState extends State<LoginPage> {
                   ],
                 ),
 
-                const SizedBox(height: 32),
+                const SizedBox(height: 24),
 
-                // Demo Credentials Info
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.blue[50],
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.blue[100]!),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(Icons.info_outline, color: Colors.blue[600], size: 20),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Demo Login',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue[900],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Individu:\njohndoe@example.com / password123',
-                        style: TextStyle(fontSize: 12, color: Colors.blue[900]),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Organisasi:\nyayasan@cipta.org / org123',
-                        style: TextStyle(fontSize: 12, color: Colors.blue[900]),
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.green[50],
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.check_circle, color: Colors.blue[600], size: 16),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Login sekali akan tetap login (ada session!)',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.green[900],
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                
               ],
             ),
           ),

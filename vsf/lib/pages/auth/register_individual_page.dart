@@ -1,9 +1,7 @@
 // pages/register_individual_page.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:latlong2/latlong.dart';
 import '../../models/user_model.dart';
-import '../../widgets/location_picker.dart';
 import '../../services/auth_service.dart'; // Import Service (ganti auth_service)
 
 class RegisterIndividualPage extends StatefulWidget {
@@ -23,7 +21,6 @@ class _RegisterIndividualPageState extends State<RegisterIndividualPage> {
 
   final SupabaseAuthService _authService = SupabaseAuthService(); // Instance Service
 
-  LatLng? _selectedLocation;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
@@ -40,13 +37,7 @@ class _RegisterIndividualPageState extends State<RegisterIndividualPage> {
 
   // HAPUS FUNGSI _hashPassword LOKAL!
 
-  void _handleLocationPicked(LatLng location) {
-    setState(() {
-      _selectedLocation = location;
-    });
-    print('📍 Location picked: ${location.latitude}, ${location.longitude}');
-  }
-
+  
   Future<void> _register() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -57,8 +48,6 @@ class _RegisterIndividualPageState extends State<RegisterIndividualPage> {
       // KIRIM PASSWORD MENTAH
       final password = _passwordController.text;
       
-      final lat = _selectedLocation?.latitude;
-      final lng = _selectedLocation?.longitude;
 
       // Panggil Service untuk Auth Lokal dan Sinkronisasi ID ke Supabase
       final uid = await _authService.registerAndSyncId(
@@ -67,8 +56,6 @@ class _RegisterIndividualPageState extends State<RegisterIndividualPage> {
         password: password, // Kirim password mentah
         fullName: _nameController.text.trim(),
         nik: _nikController.text.trim(),
-        latitude: lat,
-        longitude: lng,
       );
 
       if (mounted) {

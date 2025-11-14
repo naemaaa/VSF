@@ -1,4 +1,3 @@
-// activity_detail_page.dart
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:geolocator/geolocator.dart';
@@ -11,8 +10,6 @@ import '../../models/volunteer_registration.dart';
 import '../../widgets/event_map_viewer.dart';
 import '../volunteer/register_volunteer_page.dart';
 import 'event_participants_page.dart';
-import '../../services/event_service.dart'; 
-
 
 class ActivityDetailPage extends StatefulWidget {
   final EventModel event;
@@ -29,9 +26,6 @@ class ActivityDetailPage extends StatefulWidget {
 }
 
 class _ActivityDetailPageState extends State<ActivityDetailPage> {
-  // Gunakan EventService
-  final EventService _eventService = EventService();
-  
   final double _usdRate = 15800.0;
   final double _eurRate = 17200.0;
   String _selectedTimezone = 'WIB';
@@ -40,14 +34,10 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
   String? _currentUserLng;
   String? _currentUserProvince;
   bool _locationLoading = false;
-  
-  // Simpan event di state untuk update status setelah register/cancel
-  late EventModel _currentEvent; 
 
   @override
   void initState() {
     super.initState();
-    _currentEvent = widget.event; // Inisialisasi dari widget
     _setCurrentUserProvince();
     _requestUserLocation();
   }
@@ -64,13 +54,16 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
     setState(() => _locationLoading = true);
     
     try {
+      // Check permission
       LocationPermission permission = await Geolocator.checkPermission();
       
       if (permission == LocationPermission.denied) {
+        print('📍 Location permission denied, requesting...');
         permission = await Geolocator.requestPermission();
       }
       
       if (permission == LocationPermission.deniedForever) {
+        print('❌ Location permission denied forever');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -83,10 +76,15 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
       }
       
       if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
+        print('✅ Location permission granted');
+        
+        // Get current position
         final position = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high,
           timeLimit: const Duration(seconds: 10),
         );
+        
+        print('📍 Got user location: ${position.latitude}, ${position.longitude}');
         
         if (mounted) {
           setState(() {
@@ -104,19 +102,8 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
     }
   }
 
-  // FUNGSI UNTUK REFRESH DATA EVENT DARI API/CACHE
-  Future<void> _refreshEventData(String eventId) async {
-    final updatedEvent = await _eventService.getEventById(eventId);
-    if (updatedEvent != null) {
-      if (mounted) setState(() => _currentEvent = updatedEvent);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    // Gunakan _currentEvent (state)
-    final event = _currentEvent;
-    
     return Scaffold(
       backgroundColor: Colors.white,
       body: CustomScrollView(
@@ -166,79 +153,79 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
               ),
             ],
             flexibleSpace: FlexibleSpaceBar(
-              background: _buildHeaderImage(event),
+              background: _buildHeaderImage(),
             ),
           ),
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Status & Category
-                  Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.blue[50],
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          event.category,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.blue[600],
-                            fontWeight: FontWeight.bold,
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.blue[50],
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              widget.event.category,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.blue[600],
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                           ),
+                          const Spacer(),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: widget.event.isFull
+                                  ? Colors.red[50]
+                                  : widget.event.isPast
+                                      ? Colors.grey[200]
+                                      : Colors.green[50],
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              widget.event.eventStatus,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: widget.event.isFull
+                                    ? Colors.red[600]
+                                    : widget.event.isPast
+                                        ? Colors.grey[600]
+                                        : Colors.green[600],
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        widget.event.title,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                          height: 1.3,
                         ),
                       ),
-                      const Spacer(),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: event.isFull
-                              ? Colors.red[50]
-                              : event.isPast
-                                  ? Colors.grey[200]
-                                  : Colors.green[50],
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          event.eventStatus,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: event.isFull
-                                ? Colors.red[600]
-                                : event.isPast
-                                    ? Colors.grey[600]
-                                    : Colors.green[600],
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    event.title,
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                      height: 1.3,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  // Organizer Info
-                  Row(
+                      const SizedBox(height: 16),
+                      Row(
                         children: [
                           // Organizer Avatar/Logo
                           Container(
@@ -317,257 +304,246 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
                         ],
                       ),
                       const SizedBox(height: 24),
-                  const SizedBox(height: 24),
-                  
-                  // Deskripsi
-                  const Text(
-                    'Deskripsi Kegiatan',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    event.description,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[700],
-                      height: 1.6,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  
-                  // Waktu Kegiatan
-                  const Text(
-                    'Waktu Kegiatan',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      _buildTimezoneChip('WIB'),
-                      const SizedBox(width: 8),
-                      _buildTimezoneChip('WITA'),
-                      const SizedBox(width: 8),
-                      _buildTimezoneChip('WIT'),
-                      const SizedBox(width: 8),
-                      _buildTimezoneChip('London'),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.blue[50],
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.access_time, color: Colors.blue[600]),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                _selectedTimezone,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.blue[600],
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                _getConvertedTime(event),
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.black87,
-                                ),
-                              ),
-                              Text(
-                                event.formattedEventDate,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.grey[600],
-                                ),
-                              ),
-                            ],
-                          ),
+                      const Text(
+                        'Deskripsi Kegiatan',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
                         ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  
-                  // Lokasi
-                  const Text(
-                    'Lokasi',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        widget.event.description,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[700],
+                          height: 1.6,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      const Text(
+                        'Waktu Kegiatan',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          _buildTimezoneChip('WIB'),
+                          const SizedBox(width: 8),
+                          _buildTimezoneChip('WITA'),
+                          const SizedBox(width: 8),
+                          _buildTimezoneChip('WIT'),
+                          const SizedBox(width: 8),
+                          _buildTimezoneChip('London'),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.blue[50],
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
                           children: [
-                            Icon(Icons.location_on, color: Colors.red[400]),
+                            Icon(Icons.access_time, color: Colors.blue[600]),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: Text(
-                                event.location.fullAddress,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.black87,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _selectedTimezone,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.blue[600],
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _getConvertedTime(widget.event),
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                  Text(
+                                    widget.event.formattedEventDate,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      const Text(
+                        'Lokasi',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.location_on, color: Colors.red[400]),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    widget.event.location.fullAddress,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: _openGoogleMaps,
+                                icon: const Icon(Icons.map),
+                                label: const Text('Lihat Lokasi di Maps'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.blue[600],
+                                  side: BorderSide(color: Colors.blue[600]!),
                                 ),
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            onPressed: () => _openGoogleMaps(event),
-                            icon: const Icon(Icons.map),
-                            label: const Text('Lihat Lokasi di Maps'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.blue[600],
-                              side: BorderSide(color: Colors.blue[600]!),
+                      ),
+                      const SizedBox(height: 16),
+                      EventMapViewer(
+                        event: widget.event,
+                        currentUserLat: _currentUserLat,
+                        currentUserLng: _currentUserLng,
+                        currentUserProvince: _currentUserProvince,
+                      ),
+                      const SizedBox(height: 24),
+                      const Text(
+                        'Harga Partisipasi',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildCurrencyCard(
+                              'IDR',
+                              widget.event.formattedPrice,
+                              Colors.blue,
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  // Map Viewer
-                  EventMapViewer(
-                    event: event,
-                    currentUserLat: _currentUserLat,
-                    currentUserLng: _currentUserLng,
-                    currentUserProvince: _currentUserProvince,
-                  ),
-                  const SizedBox(height: 24),
-                  
-                  // Harga Partisipasi
-                  const Text(
-                    'Harga Partisipasi',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildCurrencyCard(
-                          'IDR',
-                          event.formattedPrice,
-                          Colors.blue,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildCurrencyCard(
-                          'USD',
-                          _convertToUSD(event),
-                          Colors.green,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildCurrencyCard(
-                          'EUR',
-                          _convertToEUR(event),
-                          Colors.orange,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  
-                  // Jumlah Volunteer
-                  const Text(
-                    'Jumlah Volunteer',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              '${event.currentVolunteerCount} / ${event.targetVolunteerCount}',
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _buildCurrencyCard(
+                              'USD',
+                              _convertToUSD(),
+                              Colors.green,
                             ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _buildCurrencyCard(
+                              'EUR',
+                              _convertToEUR(),
+                              Colors.orange,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      const Text(
+                        'Jumlah Volunteer',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  '${widget.event.currentVolunteerCount} / ${widget.event.targetVolunteerCount}',
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  '${widget.event.volunteerPercentage.toStringAsFixed(0)}%',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey[600],
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            LinearProgressIndicator(
+                              value: widget.event.volunteerPercentage / 100,
+                              backgroundColor: Colors.grey[300],
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.blue[600]!,
+                              ),
+                              minHeight: 8,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            const SizedBox(height: 8),
                             Text(
-                              '${event.volunteerPercentage.toStringAsFixed(0)}%',
+                              'Tersisa ${widget.event.remainingSlots} slot',
                               style: TextStyle(
-                                fontSize: 14,
+                                fontSize: 13,
                                 color: Colors.grey[600],
-                                fontWeight: FontWeight.bold,
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 8),
-                        LinearProgressIndicator(
-                          value: event.volunteerPercentage / 100,
-                          backgroundColor: Colors.grey[300],
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Colors.blue[600]!,
-                          ),
-                          minHeight: 8,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Tersisa ${event.remainingSlots} slot',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ],
@@ -585,14 +561,14 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
           ],
         ),
         child: SafeArea(
-          child: _buildBottomActions(event),
+          child: _buildBottomActions(),
         ),
       ),
     );
   }
 
-  Widget _buildBottomActions(EventModel event) {
-    if (event.organizerId == widget.currentUser.id) {
+  Widget _buildBottomActions() {
+    if (widget.event.organizerId == widget.currentUser.id) {
       return Row(
         children: [
           Expanded(
@@ -602,7 +578,7 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
                   context,
                   MaterialPageRoute(
                     builder: (context) => EventParticipantsPage(
-                      event: event,
+                      event: widget.event,
                       currentUser: widget.currentUser,
                     ),
                   ),
@@ -622,7 +598,7 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
           SizedBox(
             width: 140,
             child: OutlinedButton.icon(
-              onPressed: () => _openGoogleMaps(event),
+              onPressed: _openGoogleMaps,
               icon: const Icon(Icons.map),
               label: const Text('Lihat Maps'),
               style: OutlinedButton.styleFrom(
@@ -637,13 +613,13 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
       );
     }
 
-    final isRegistered = event.isUserRegistered(widget.currentUser.id);
+    final isRegistered = widget.event.isUserRegistered(widget.currentUser.id);
     if (isRegistered) {
-      if (event.isPast) {
+      if (widget.event.isPast) {
         return SizedBox(
           width: double.infinity,
           child: OutlinedButton.icon(
-            onPressed: () => _openGoogleMaps(event),
+            onPressed: _openGoogleMaps,
             icon: const Icon(Icons.map),
             label: const Text('Lihat Maps'),
             style: OutlinedButton.styleFrom(
@@ -659,7 +635,7 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
         children: [
           Expanded(
             child: ElevatedButton(
-              onPressed: () => _confirmCancelRegistration(event),
+              onPressed: _confirmCancelRegistration,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red[600],
                 foregroundColor: Colors.white,
@@ -673,7 +649,7 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
           SizedBox(
             width: 140,
             child: OutlinedButton.icon(
-              onPressed: () => _openGoogleMaps(event),
+              onPressed: _openGoogleMaps,
               icon: const Icon(Icons.map),
               label: const Text('Lihat Maps'),
               style: OutlinedButton.styleFrom(
@@ -691,22 +667,18 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
-        onPressed: event.isFull || event.isPast
+        onPressed: widget.event.isFull || widget.event.isPast
             ? null
-            : () async {
-                final result = await Navigator.push(
+            : () {
+                Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => RegisterVolunteerPage(
-                      event: event,
+                      event: widget.event,
                       currentUser: widget.currentUser,
                     ),
                   ),
                 );
-                // BARIS YANG DIPERBAIKI (refresh data event setelah pendaftaran berhasil)
-                if (result == true) {
-                  await _refreshEventData(event.id); 
-                }
               },
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.blue[600],
@@ -719,9 +691,9 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
           disabledBackgroundColor: Colors.grey[300],
         ),
         child: Text(
-          event.isFull
+          widget.event.isFull
               ? 'Kuota Penuh'
-              : event.isPast
+              : widget.event.isPast
                   ? 'Event Sudah Selesai'
                   : 'Daftar Volunteer',
           style: const TextStyle(
@@ -733,7 +705,7 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
     );
   }
 
-  Future<void> _confirmCancelRegistration(EventModel event) async {
+  Future<void> _confirmCancelRegistration() async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -746,83 +718,36 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
       ),
     );
     if (confirm == true) {
-      await _cancelRegistration(event);
+      await _cancelRegistration();
     }
   }
 
-  Future<void> _cancelRegistration(EventModel event) async {
+  Future<void> _cancelRegistration() async {
     try {
-      // 1. Hapus entri registrasi dari box
       final regBox = Hive.box<VolunteerRegistration>('registrations');
+      final eventBox = Hive.box<EventModel>('events');
+      final regEntry = regBox.values.firstWhere(
+        (r) => r.eventId == widget.event.id && r.volunteerId == widget.currentUser.id,
+        orElse: () => throw Exception('Registration not found'),
+      );
       dynamic foundKey;
       for (final k in regBox.keys) {
         final v = regBox.get(k);
-        if (v != null && v.eventId == event.id && v.volunteerId == widget.currentUser.id) {
+        if (v == regEntry) {
           foundKey = k;
           break;
         }
       }
       if (foundKey != null) await regBox.delete(foundKey);
-
-      // 2. Perbarui registeredVolunteerIds di model Event lokal (Hive)
-      final eventBox = Hive.box<EventModel>('events');
-      final currentEventInHive = eventBox.get(event.id);
-
-      if (currentEventInHive != null) {
-        currentEventInHive.removeVolunteer(widget.currentUser.id); // Mutasi list & count
-        await currentEventInHive.save(); // Simpan perubahan ke Hive
-        
-        // 3. Panggil API untuk update (opsional, tergantung implementasi API)
-        // Note: Disarankan panggil _eventService.updateEvent(currentEventInHive, null);
-      }
-
+      final event = eventBox.values.firstWhere((e) => e.id == widget.event.id, orElse: () => widget.event);
+      event.removeVolunteer(widget.currentUser.id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pendaftaran berhasil dibatalkan')));
-        await _refreshEventData(event.id); // Refresh state
+        Navigator.pop(context);
       }
     } catch (e) {
-      print('❌ Error canceling registration: $e');
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal membatalkan pendaftaran')));
     }
-  }
-  
-  // Widget helper
-  Widget _buildOrganizerAvatar(EventModel event) {
-    return Container(
-      width: 50,
-      height: 50,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: Colors.orange[100],
-        border: Border.all(color: Colors.orange[300]!, width: 2),
-      ),
-      child: ClipOval(
-        child: (event.organizerImageUrl != null && event.organizerImageUrl!.isNotEmpty)
-            ? (event.organizerImageUrl!.startsWith('http')
-                ? Image.network(
-                    event.organizerImageUrl!,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => _defaultOrganizerIcon(),
-                  )
-                : Image.file(
-                    File(event.organizerImageUrl!),
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => _defaultOrganizerIcon(),
-                  ))
-            : _defaultOrganizerIcon(),
-      ),
-    );
-  }
-
-  Widget _defaultOrganizerIcon() {
-    return Container(
-      color: Colors.orange[100],
-      child: Icon(
-        Icons.business,
-        color: Colors.orange[600],
-        size: 24,
-      ),
-    );
   }
 
   Widget _buildTimezoneChip(String timezone) {
@@ -849,12 +774,12 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
     );
   }
 
-  Widget _buildHeaderImage(EventModel event) {
-    final url = event.imageUrl;
+  Widget _buildHeaderImage() {
+    final url = widget.event.imageUrl;
     if (url == null || url.isEmpty) {
       return Container(
         color: Colors.grey[200],
-        child: const Center(child: Icon(Icons.image, size: 80)),
+        child: const Icon(Icons.image, size: 80),
       );
     }
 
@@ -862,10 +787,12 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
       return Image.network(
         url,
         fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => Container(
-          color: Colors.grey[200],
-          child: const Center(child: Icon(Icons.image, size: 80)),
-        ),
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            color: Colors.grey[200],
+            child: const Icon(Icons.image, size: 80),
+          );
+        },
       );
     }
 
@@ -874,15 +801,17 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
       return Image.file(
         file,
         fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => Container(
-          color: Colors.grey[200],
-          child: const Center(child: Icon(Icons.image, size: 80)),
-        ),
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            color: Colors.grey[200],
+            child: const Icon(Icons.image, size: 80),
+          );
+        },
       );
     } catch (_) {
       return Container(
         color: Colors.grey[200],
-        child: const Center(child: Icon(Icons.image, size: 80)),
+        child: const Icon(Icons.image, size: 80),
       );
     }
   }
@@ -903,8 +832,9 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
         offsetHours = 0; 
         break;
     }
-    final startUtc = event.eventStartTime.toUtc();
-    final endUtc = event.eventEndTime.toUtc();
+   final startUtc = event.eventStartTime; // ⬅️ PERBAIKAN
+    final endUtc = event.eventEndTime;     // ⬅️ PERBAIKAN
+    
     final convertedStart = startUtc.add(Duration(hours: offsetHours));
     final convertedEnd = endUtc.add(Duration(hours: offsetHours));
     final formatter = DateFormat('HH:mm');
@@ -944,44 +874,58 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
     );
   }
 
-  String _convertToUSD(EventModel event) {
-    if (event.isFree) return 'Free';
-    final usd = event.participationFeeIdr / _usdRate;
+  String _convertToUSD() {
+    if (widget.event.isFree) return 'Free';
+    final usd = widget.event.participationFeeIdr / _usdRate;
     return '\$${usd.toStringAsFixed(2)}';
   }
 
-  String _convertToEUR(EventModel event) {
-    if (event.isFree) return 'Free';
-    final eur = event.participationFeeIdr / _eurRate;
+  String _convertToEUR() {
+    if (widget.event.isFree) return 'Free';
+    final eur = widget.event.participationFeeIdr / _eurRate;
     return '€${eur.toStringAsFixed(2)}';
   }
 
-  Future<void> _openGoogleMaps(EventModel event) async {
-    final lat = event.location.latitude;
-    final lng = event.location.longitude;
-    
-    // Pastikan koordinat valid sebelum membuat URI
-    if (lat == 0 && lng == 0) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Koordinat lokasi tidak ditemukan.')),
+  Future<void> _openGoogleMaps() async {
+    try {
+      final lat = widget.event.location.latitude;
+      final lng = widget.event.location.longitude;
+      
+      final googleMapsUrl = 'https://www.google.com/maps/search/?api=1&query=$lat,$lng';
+      
+      print('🗺️ Opening Google Maps: $googleMapsUrl');
+      
+      final uri = Uri.parse(googleMapsUrl);
+      
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication,
         );
+      } else {
+        final mapsUrl = 'https://maps.google.com/?q=$lat,$lng';
+        final mapsUri = Uri.parse(mapsUrl);
+        
+        if (await canLaunchUrl(mapsUri)) {
+          await launchUrl(
+            mapsUri,
+            mode: LaunchMode.externalApplication,
+          );
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Tidak dapat membuka Google Maps.'),
+              ),
+            );
+          }
+        }
       }
-      return;
-    }
-
-    final googleMapsUrl = 'https://www.google.com/maps/search/?api=1&query=$lat,$lng';
-    final uri = Uri.parse(googleMapsUrl);
-    
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(
-        uri,
-        mode: LaunchMode.externalApplication,
-      );
-    } else {
+    } catch (e) {
+      print('❌ Error opening maps: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Tidak dapat membuka Google Maps.')),
+          SnackBar(content: Text('Error: $e')),
         );
       }
     }

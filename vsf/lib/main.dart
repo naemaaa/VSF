@@ -114,7 +114,7 @@ Future<void> _requestLocationPermissionOnce() async {
         status == LocationPermission.always) {
       print('   ✅ Location permission already granted');
     } else if (status == LocationPermission.deniedForever) {
-      print('   ❌ Location permission denied forever');
+      print('   ❌  Location permission denied forever');
     }
 
     // Also check if location service is enabled
