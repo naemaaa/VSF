@@ -178,23 +178,17 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
             }
           }
         } else {
-          // ✅ PERBAIKAN: Jika cancel, ROLLBACK di Hive
-          print('❌ Payment cancelled or failed, rolling back...');
-          // Ambil event original dari Hive, bukan dari widget (widget mungkin sudah stale)
-          final originalEvent = eventBox.get(widget.event.id) ?? widget.event;
-          final eventToRestore = originalEvent.copyWith(
-            registeredVolunteerIds: [...originalEvent.registeredVolunteerIds]..remove(widget.currentUser.id),
-            currentVolunteerCount: (originalEvent.currentVolunteerCount - 1).clamp(0, originalEvent.targetVolunteerCount),
-          );
-          await eventBox.put(eventToRestore.id, eventToRestore);
-          await regBox.delete(registration.id);
-          print('✅ Rollback completed');
+          // ✅ PERBAIKAN: Jika cancel atau error, JANGAN rollback
+          // Karena user sudah lihat payment screen, jadi registrasi tetap valid pending payment
+          print('⚠️ User cancelled or navigated back from payment');
+          print('   Registration kept as pending (isPaid: false)');
+          print('   Registrasi tetap ada di Hive dengan status belum dibayar');
           
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Pendaftaran dibatalkan'),
-                backgroundColor: Colors.grey,
+                content: Text('Pendaftaran disimpan. Anda bisa melanjutkan pembayaran nanti.'),
+                backgroundColor: Colors.blue,
               ),
             );
           }
@@ -203,19 +197,8 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
     } catch (e) {
       print('❌ Error in registration: $e');
       
-      // ✅ Rollback jika error - gunakan event dari Hive, bukan widget
-      try {
-        final eventBox = Hive.box<EventModel>('events');
-        final originalEvent = eventBox.get(widget.event.id) ?? widget.event;
-        final eventToRestore = originalEvent.copyWith(
-          registeredVolunteerIds: [...originalEvent.registeredVolunteerIds]..remove(widget.currentUser.id),
-          currentVolunteerCount: (originalEvent.currentVolunteerCount - 1).clamp(0, originalEvent.targetVolunteerCount),
-        );
-        await eventBox.put(eventToRestore.id, eventToRestore);
-        print('✅ Rollback on error completed');
-      } catch (e2) {
-        print('⚠️ Rollback failed: $e2');
-      }
+      // ✅ Jika error, keep registrasi pending (jangan rollback)
+      // User bisa coba daftar ulang atau lanjut bayar nanti
       
       if (mounted) {
         setState(() => _isProcessing = false);

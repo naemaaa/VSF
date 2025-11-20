@@ -5,6 +5,7 @@ import '../../models/event_model.dart';
 import '../../models/volunteer_registration.dart';
 import '../../models/user_stats_model.dart';
 import '../../services/notification_service.dart';
+import '../../services/event_service.dart';
 
 class ConfirmPaymentPage extends StatefulWidget {
   final VolunteerRegistration registration;
@@ -23,6 +24,7 @@ class ConfirmPaymentPage extends StatefulWidget {
 class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
   bool _isProcessing = false;
   final NotificationService _notificationService = NotificationService();
+  final EventService _eventService = EventService();
 
   Future<void> _processPayment() async {
     try {
@@ -37,9 +39,12 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
       if (!mounted) return;
 
       if (isSuccess) {
-        // Save registration to Hive 
         try {
-          final registrationBox = await Hive.openBox<VolunteerRegistration>('registrations');
+          final registrationBox = Hive.box<VolunteerRegistration>('registrations');
+          final eventBox = Hive.box<EventModel>('events');
+          final statsBox = Hive.box<UserStats>('user_stats');
+
+          // ✅ 1. Update registration status jadi paid
           final completedRegistration = VolunteerRegistration(
             id: widget.registration.id,
             eventId: widget.registration.eventId,
@@ -53,99 +58,92 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
             motivation: widget.registration.motivation,
             donationAmount: widget.registration.donationAmount,
             paymentMethod: widget.registration.paymentMethod,
-            isPaid: true, // Mark as paid
+            isPaid: true,
           );
-
           await registrationBox.put(completedRegistration.id, completedRegistration);
-          print('✅ Registration saved');
-          
-          // ✅ PERBAIKAN #3: Update atau buat UserStats setelah payment sukses
-          try {
-            final statsBox = await Hive.openBox<UserStats>('user_stats');
-            UserStats? userStats;
-            
-            // Cari stats untuk user ini
-            for (var stat in statsBox.values) {
-              if (stat.userId == widget.registration.volunteerId) {
-                userStats = stat;
-                break;
-              }
-            }
+          print('✅ Registration marked as paid');
 
-            if (userStats == null) {
-              // Buat baru jika belum ada
-              userStats = UserStats(
-                userId: widget.registration.volunteerId,
-                totalParticipations: 1,
-                totalDonations: widget.registration.donationAmount,
-              );
-              await statsBox.add(userStats);
-              print('✅ Created new UserStats: ${widget.registration.volunteerId}');
-              print('   Participations: 1, Donations: ${widget.registration.donationAmount}');
-            } else {
-              // Update stats yang sudah ada
-              userStats.addParticipation(widget.registration.donationAmount);
-              await userStats.save();
-              print('✅ Updated UserStats: ${widget.registration.volunteerId}');
-              print('   Participations: ${userStats.totalParticipations}, Donations: ${userStats.totalDonations}');
+          // ✅ 2. Update UserStats
+          UserStats? userStats;
+          for (var stat in statsBox.values) {
+            if (stat.userId == widget.registration.volunteerId) {
+              userStats = stat;
+              break;
             }
-            
-            // ✅ Trigger Hive listener di HomePage untuk refresh UI
-            print('📢 Stats updated, HomePage listener will refresh');
-          } catch (e) {
-            print('⚠️ Error updating UserStats: $e');
-            // Jangan stop flow, continue ke notification
           }
 
-          // 🔔 Show notification
+          if (userStats == null) {
+            userStats = UserStats(
+              userId: widget.registration.volunteerId,
+              totalParticipations: 1,
+              totalDonations: widget.registration.donationAmount,
+            );
+            await statsBox.add(userStats);
+            print('✅ Created new UserStats');
+          } else {
+            userStats.addParticipation(widget.registration.donationAmount);
+            await userStats.save();
+            print('✅ Updated UserStats');
+          }
+
+          // ✅ 3. PENTING: Fetch event terbaru dari API dan sync ke Hive
+          print('🔄 Fetching updated event from API...');
+          final updatedEventFromAPI = await _eventService.getEventById(widget.event.id);
+          if (updatedEventFromAPI != null) {
+            await eventBox.put(updatedEventFromAPI.id, updatedEventFromAPI);
+            print('✅ Event synced to Hive from API');
+            print('   Registered IDs: ${updatedEventFromAPI.registeredVolunteerIds}');
+            print('   Current count: ${updatedEventFromAPI.currentVolunteerCount}');
+          } else {
+            // Fallback: update event lokal dengan data yang kita tahu
+            final localEvent = widget.event.copyWith(
+              registeredVolunteerIds: [...widget.event.registeredVolunteerIds, widget.registration.volunteerId],
+              currentVolunteerCount: widget.event.currentVolunteerCount + 1,
+            );
+            await eventBox.put(localEvent.id, localEvent);
+            print('⚠️ API sync failed, using local data');
+          }
+
+          // ✅ 4. Show notification
           try {
             await _notificationService.showPaymentSuccessNotification(
               eventTitle: widget.event.title,
               amount: widget.registration.donationAmount,
             );
-            print('✅ Notification sent successfully');
+            print('✅ Notification sent');
           } catch (e) {
-            print('⚠️ Error sending notification: $e');
+            print('⚠️ Notification error: $e');
           }
 
-          // Show success dialog  
           _showSuccessDialog();
 
         } catch (e) {
-          // Handle database error
-          print('❌ Error: $e');
+          print('❌ Error in payment success flow: $e');
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Terjadi kesalahan: $e'),
-                backgroundColor: Colors.red,
-              ),
+              SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
             );
           }
           setState(() => _isProcessing = false);
         }
 
       } else {
-        // Show error
+        // Payment failed
         setState(() => _isProcessing = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Pembayaran gagal. Silakan coba lagi.'), 
+            content: Text('Pembayaran gagal. Silakan coba lagi.'),
             backgroundColor: Colors.red,
           ),
         );
       }
 
     } catch (e) {
-      // Handle any other errors
       print('❌ Exception: $e');
       if (mounted) {
         setState(() => _isProcessing = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Terjadi kesalahan: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -156,62 +154,39 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.green[50],
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.check_circle,
-                color: Colors.green[600],
-                size: 64,
-              ),
+              decoration: BoxDecoration(color: Colors.green[50], shape: BoxShape.circle),
+              child: Icon(Icons.check_circle, color: Colors.green[600], size: 64),
             ),
             const SizedBox(height: 24),
             const Text(
               'Pembayaran Berhasil!',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black87),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
             Text(
               'Terima kasih telah mendaftar sebagai volunteer untuk ${widget.event.title}',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-                height: 1.5,
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.grey[600], height: 1.5),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue[50],
-                borderRadius: BorderRadius.circular(8),
-              ),
+              decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(8)),
               child: Row(
                 children: [
                   Icon(Icons.notifications_active, color: Colors.blue[600], size: 20),
                   const SizedBox(width: 8),
-                  Expanded(
+                  const Expanded(
                     child: Text(
                       'Notifikasi telah dikirim ke perangkat Anda',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.blue[600],
-                      ),
+                      style: TextStyle(fontSize: 12, color: Colors.blue),
                     ),
                   ),
                 ],
@@ -221,22 +196,14 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () {
-                  // Navigate to main screen
-                  Navigator.of(context).popUntil((route) => route.isFirst);
-                },
+                onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue[600],
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                child: const Text(
-                  'Kembali ke Beranda',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
+                child: const Text('Kembali ke Beranda', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ),
           ],
@@ -256,39 +223,20 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
           icon: const Icon(Icons.arrow_back, color: Colors.black87),
           onPressed: _isProcessing ? null : () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Konfirmasi Pembayaran',
-          style: TextStyle(
-            color: Colors.black87,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+        title: const Text('Konfirmasi Pembayaran',
+            style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
-            const Text(
-              'Konfirmasi Donasi Anda',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-            ),
+            const Text('Konfirmasi Donasi Anda',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black87)),
             const SizedBox(height: 8),
-            Text(
-              'Pastikan semua informasi sudah benar sebelum melanjutkan',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-              ),
-            ),
+            Text('Pastikan semua informasi sudah benar sebelum melanjutkan',
+                style: TextStyle(fontSize: 14, color: Colors.grey[600])),
             const SizedBox(height: 24),
-
-            // Event Info
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -296,93 +244,53 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.grey[200]!),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
-                  Row(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          width: 80,
-                          height: 80,
-                          color: Colors.grey[100],
-                          child: widget.event.imageUrl != null && widget.event.imageUrl!.isNotEmpty
-                              ? Image.network(
-                                  widget.event.imageUrl!,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return const Icon(
-                                      Icons.volunteer_activism,
-                                      color: Colors.black54,
-                                      size: 32,
-                                    );
-                                  },
-                                )
-                              : const Icon(
-                                  Icons.volunteer_activism,
-                                  color: Colors.black54,
-                                  size: 32,
-                                ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              widget.event.title,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black87,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              widget.event.organizerName,
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      width: 80,
+                      height: 80,
+                      color: Colors.grey[100],
+                      child: widget.event.imageUrl != null && widget.event.imageUrl!.isNotEmpty
+                          ? Image.network(
+                              widget.event.imageUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (c, e, s) =>
+                                  const Icon(Icons.volunteer_activism, color: Colors.black54, size: 32),
+                            )
+                          : const Icon(Icons.volunteer_activism, color: Colors.black54, size: 32),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(widget.event.title,
+                            style: const TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis),
+                        const SizedBox(height: 4),
+                        Text(widget.event.organizerName,
+                            style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 24),
-
-            // Volunteer Info
-            const Text(
-              'Informasi Volunteer',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-            ),
+            const Text('Informasi Volunteer',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
             const SizedBox(height: 12),
             _buildInfoRow('Nama', widget.registration.volunteerName),
             _buildInfoRow('Email', widget.registration.volunteerEmail),
             _buildInfoRow('Telepon', widget.registration.volunteerPhone),
             const SizedBox(height: 24),
-
-            // Payment Info
-            const Text(
-              'Detail Pembayaran',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-            ),
+            const Text('Detail Pembayaran',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(16),
@@ -396,21 +304,11 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        'Jumlah Donasi',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.black54,
-                        ),
-                      ),
-                      Text(
-                        widget.registration.formattedDonation,
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue[600],
-                        ),
-                      ),
+                      const Text('Jumlah Donasi',
+                          style: TextStyle(fontSize: 14, color: Colors.black54)),
+                      Text(widget.registration.formattedDonation,
+                          style: TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue[600])),
                     ],
                   ),
                   const Divider(height: 24),
@@ -422,22 +320,12 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
-                              'Metode Pembayaran',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.black54,
-                              ),
-                            ),
+                            const Text('Metode Pembayaran',
+                                style: TextStyle(fontSize: 12, color: Colors.black54)),
                             const SizedBox(height: 2),
-                            Text(
-                              widget.registration.paymentMethod,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black87,
-                              ),
-                            ),
+                            Text(widget.registration.paymentMethod,
+                                style:
+                                    const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                           ],
                         ),
                       ),
@@ -451,27 +339,14 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
               ),
             ),
             const SizedBox(height: 32),
-
-            // Transaction Secure Info
             Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(12),
-              ),
+              decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(12)),
               child: Row(
                 children: [
                   Icon(Icons.lock_outline, color: Colors.grey[600], size: 20),
                   const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Transaksi Aman',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ),
+                  Expanded(child: Text('Transaksi Aman', style: TextStyle(fontSize: 12, color: Colors.grey[600]))),
                 ],
               ),
             ),
@@ -482,13 +357,7 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, -5),
-            ),
-          ],
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
         ),
         child: SafeArea(
           child: ElevatedButton(
@@ -497,9 +366,7 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
               backgroundColor: Colors.blue[600],
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               elevation: 0,
               disabledBackgroundColor: Colors.grey[300],
             ),
@@ -508,17 +375,9 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
                     height: 20,
                     width: 20,
                     child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
+                        strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
                   )
-                : const Text(
-                    'Konfirmasi & Bayar',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                : const Text('Konfirmasi & Bayar', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           ),
         ),
       ),
@@ -533,23 +392,10 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
         children: [
           SizedBox(
             width: 120,
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.grey[600],
-              ),
-            ),
+            child: Text(label, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
           ),
           Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: Colors.black87,
-              ),
-            ),
+            child: Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
           ),
         ],
       ),
