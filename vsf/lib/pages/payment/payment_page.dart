@@ -6,13 +6,13 @@ import 'confirm_payment_page.dart';
 class PaymentPage extends StatefulWidget {
   final VolunteerRegistration registration;
   final EventModel event;
-  final String? selectedCurrency; // ✅ PERBAIKAN: Tambah parameter
+  final String? selectedCurrency;
 
   const PaymentPage({
     super.key,
     required this.registration,
     required this.event,
-    this.selectedCurrency, // ✅ PERBAIKAN: Terima dari parameter
+    this.selectedCurrency,
   });
 
   @override
@@ -21,12 +21,11 @@ class PaymentPage extends StatefulWidget {
 
 class _PaymentPageState extends State<PaymentPage> {
   String? _selectedMethod;
-  late String _currentCurrency; // ✅ PERBAIKAN: Gunakan late dan initialize di initState
+  late String _currentCurrency;
 
   @override
   void initState() {
     super.initState();
-    // ✅ PERBAIKAN: Initialize currency dari parameter atau default ke IDR
     _currentCurrency = widget.selectedCurrency ?? 'IDR';
     print('💱 PaymentPage initialized with currency: $_currentCurrency');
   }
@@ -93,7 +92,10 @@ class _PaymentPageState extends State<PaymentPage> {
       return;
     }
 
-    // ✅ PERBAIKAN: Update registration dengan payment method & currency
+    print('💳 Proceeding to confirmation');
+    print('   Currency: $_currentCurrency');
+    print('   Method: ${_getMethodName(_selectedMethod!)}');
+
     final updatedRegistration = VolunteerRegistration(
       id: widget.registration.id,
       eventId: widget.registration.eventId,
@@ -108,12 +110,8 @@ class _PaymentPageState extends State<PaymentPage> {
       donationAmount: widget.registration.donationAmount,
       paymentMethod: _getMethodName(_selectedMethod!),
       isPaid: false,
-      paymentCurrency: _currentCurrency, // ✅ PERBAIKAN: Gunakan currency yang sudah diinit
+      paymentCurrency: _currentCurrency,
     );
-
-    print('💳 Proceeding to confirmation');
-    print('   Currency: $_currentCurrency');
-    print('   Method: ${_getMethodName(_selectedMethod!)}');
 
     Navigator.push(
       context,
@@ -121,10 +119,14 @@ class _PaymentPageState extends State<PaymentPage> {
         builder: (context) => ConfirmPaymentPage(
           registration: updatedRegistration,
           event: widget.event,
-          paymentCurrency: _currentCurrency, // ✅ PERBAIKAN: Pass currency
+          paymentCurrency: _currentCurrency,
         ),
       ),
-    );
+    ).then((result) {
+      if (result == true) {
+        Navigator.pop(context, true);
+      }
+    });
   }
 
   String _getMethodName(String id) {
@@ -162,7 +164,7 @@ class _PaymentPageState extends State<PaymentPage> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.black87),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.pop(context, false),
         ),
         title: const Text(
           'Metode Pembayaran',
@@ -174,7 +176,6 @@ class _PaymentPageState extends State<PaymentPage> {
       ),
       body: Column(
         children: [
-          // Total Donasi
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(20),
@@ -200,7 +201,6 @@ class _PaymentPageState extends State<PaymentPage> {
                     color: Colors.blue[600],
                   ),
                 ),
-                // ✅ PERBAIKAN: Tampilkan currency yang aktif
                 const SizedBox(height: 8),
                 Text(
                   _currentCurrency == 'IDR' 
@@ -223,7 +223,6 @@ class _PaymentPageState extends State<PaymentPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Kartu Kredit/Debit
                   const Text(
                     'Kartu Kredit/Debit',
                     style: TextStyle(
@@ -236,7 +235,6 @@ class _PaymentPageState extends State<PaymentPage> {
                   _buildPaymentTile(_paymentMethods[0]),
                   const SizedBox(height: 24),
 
-                  // Transfer Virtual Account
                   const Text(
                     'Transfer Virtual Account',
                     style: TextStyle(
@@ -253,7 +251,6 @@ class _PaymentPageState extends State<PaymentPage> {
                   _buildPaymentTile(_paymentMethods[3]),
                   const SizedBox(height: 24),
 
-                  // E-Wallet
                   const Text(
                     'E-Wallet',
                     style: TextStyle(
@@ -317,6 +314,7 @@ class _PaymentPageState extends State<PaymentPage> {
     return GestureDetector(
       onTap: () {
         setState(() => _selectedMethod = method['id']);
+        print('✅ Selected payment method: ${method['name']}');
       },
       child: Container(
         padding: const EdgeInsets.all(16),

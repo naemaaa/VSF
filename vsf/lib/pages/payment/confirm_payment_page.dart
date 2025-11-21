@@ -48,10 +48,11 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
           final registrationBox = Hive.box<VolunteerRegistration>('registrations');
           final eventBox = Hive.box<EventModel>('events');
           final statsBox = Hive.box<UserStats>('user_stats');
-          
           final notificationBox = Hive.box<NotificationModel>('notifications');
 
-          // ✅ 1. Update registration status jadi paid
+          print('✅ Payment processing started...');
+
+          // ✅ 1. Update registration status jadi paid (dengan currency yang benar)
           final completedRegistration = VolunteerRegistration(
             id: widget.registration.id,
             eventId: widget.registration.eventId,
@@ -67,13 +68,13 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
             paymentMethod: widget.registration.paymentMethod,
             isPaid: true,
             registeredAt: widget.registration.registeredAt,
-            paymentCurrency: widget.paymentCurrency, // ✅ PERBAIKAN: Gunakan paymentCurrency dari parameter
+            paymentCurrency: widget.paymentCurrency,
           );
           await registrationBox.put(completedRegistration.id, completedRegistration);
           print('✅ Registration marked as paid');
           print('   Currency: ${widget.paymentCurrency}');
 
-          // ✅ 2. Update UserStats (PENTING: ensure stats tersimpan)
+          // ✅ 2. Update UserStats
           UserStats? userStats;
           for (var stat in statsBox.values) {
             if (stat.userId == widget.registration.volunteerId) {
@@ -93,7 +94,7 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
           } else {
             userStats.addParticipation(widget.registration.donationAmount);
             await userStats.save();
-            print('✅ Updated UserStats: ${userStats.totalParticipations} participations, Rp${userStats.totalDonations} donated');
+            print('✅ Updated UserStats: ${userStats.totalParticipations} participations');
           }
 
           // ✅ 3. Fetch event terbaru dari API dan sync ke Hive
@@ -102,8 +103,7 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
           if (updatedEventFromAPI != null) {
             await eventBox.put(updatedEventFromAPI.id, updatedEventFromAPI);
             print('✅ Event synced to Hive from API');
-            print('   Registered IDs: ${updatedEventFromAPI.registeredVolunteerIds}');
-            print('   Current count: ${updatedEventFromAPI.currentVolunteerCount}');
+            print('   Current volunteer count: ${updatedEventFromAPI.currentVolunteerCount}');
           } else {
             final localEvent = widget.event.copyWith(
               registeredVolunteerIds: [...widget.event.registeredVolunteerIds, widget.registration.volunteerId],
@@ -151,7 +151,6 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
         }
 
       } else {
-        // Payment failed
         setState(() => _isProcessing = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -378,14 +377,9 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
                           ],
                         ),
                       ),
-                      TextButton(
-                        onPressed: _isProcessing ? null : () => Navigator.pop(context),
-                        child: const Text('Ubah'),
-                      ),
                     ],
                   ),
                   const SizedBox(height: 12),
-                  // ✅ TAMPILKAN CURRENCY
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(

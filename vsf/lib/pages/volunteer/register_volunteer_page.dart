@@ -136,19 +136,9 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
     setState(() => _isProcessing = true);
 
     try {
-      print('📝 Creating registration...');
+      print('📝 Creating registration with currency: $_selectedCurrency...');
       
-      // ✅ PERBAIKAN #2A: Tambahkan user ke event SEBELUM payment (optimistic update)
-      final updatedEvent = widget.event.copyWith(
-        registeredVolunteerIds: [...widget.event.registeredVolunteerIds, widget.currentUser.id],
-        currentVolunteerCount: widget.event.currentVolunteerCount + 1,
-      );
-      
-      final eventBox = Hive.box<EventModel>('events');
-      await eventBox.put(updatedEvent.id, updatedEvent);
-      print('✅ Event updated optimistically in Hive');
-      
-      // Buat registration object
+      // ✅ PERBAIKAN: Buat registration object DENGAN currency yang dipilih
       final registration = VolunteerRegistration(
         id: 'reg_${DateTime.now().millisecondsSinceEpoch}',
         eventId: widget.event.id,
@@ -164,31 +154,32 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
         donationAmount: widget.event.participationFeeIdr,
         paymentMethod: '',
         agreementNonRefundable: _agreementChecked,
-        paymentCurrency: _selectedCurrency, // ✅ PERBAIKAN: Simpan currency di registrasi
+        paymentCurrency: _selectedCurrency, // ✅ PERBAIKAN: Simpan currency yang dipilih
       );
 
       final regBox = Hive.box<VolunteerRegistration>('registrations');
       await regBox.put(registration.id, registration);
       print('✅ Registration saved to Hive (pending payment)');
       print('   Currency: $_selectedCurrency');
+      print('   Registration ID: ${registration.id}');
 
       if (mounted) {
         setState(() => _isProcessing = false);
         
-        // Navigate ke payment dengan updated event dan currency
+        // ✅ PERBAIKAN: Navigate ke PaymentPage DENGAN currency yang sudah dipilih
         final result = await Navigator.push<bool>(
           context,
           MaterialPageRoute(
             builder: (context) => PaymentPage(
               registration: registration,
-              event: updatedEvent,
-              selectedCurrency: _selectedCurrency, // ✅ PERBAIKAN: Pass currency
+              event: widget.event,
+              selectedCurrency: _selectedCurrency, // ✅ PERBAIKAN: Pass currency explicitly
             ),
           ),
         );
 
         if (result == true && mounted) {
-          print('💳 Payment successful, updating API...');
+          print('💳 Payment successful, updating registration status...');
           
           // Update registration status
           registration.isPaid = true;
@@ -201,9 +192,9 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
           );
 
           if (success) {
-            print('✅ API updated successfully!');
+            print('✅ Event updated successfully via API!');
             if (mounted) {
-              Navigator.pop(context, true); // Return true ke activity_detail
+              Navigator.pop(context, true);
             }
           } else {
             print('⚠️ API update failed, but data saved locally');
@@ -218,11 +209,8 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
             }
           }
         } else {
-          // ✅ PERBAIKAN: Jika cancel atau error, data tetap tersimpan
           print('⚠️ User cancelled or navigated back from payment');
-          print('   Registration kept as pending (isPaid: false)');
-          print('   Registrasi tetap ada di Hive dengan status belum dibayar');
-          
+          print('   Pendaftaran tetap ada di Hive dengan status belum dibayar');
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -276,7 +264,6 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Event Info Card
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -338,7 +325,6 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
                 ),
                 const SizedBox(height: 24),
 
-                // Nama Lengkap
                 const Text(
                   'Nama Lengkap',
                   style: TextStyle(
@@ -367,7 +353,6 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
                 ),
                 const SizedBox(height: 20),
 
-                // Alamat Email
                 const Text(
                   'Alamat Email',
                   style: TextStyle(
@@ -400,7 +385,6 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
                 ),
                 const SizedBox(height: 20),
 
-                // Nomor Telepon
                 const Text(
                   'Nomor Telepon',
                   style: TextStyle(
@@ -433,7 +417,6 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
                 ),
                 const SizedBox(height: 20),
 
-                // Tanggal Lahir
                 const Text(
                   'Tanggal Lahir',
                   style: TextStyle(
@@ -473,7 +456,6 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
                 ),
                 const SizedBox(height: 20),
 
-                // Agreement Checkbox
                 const Text(
                   'Ketersediaan Anda',
                   style: TextStyle(
@@ -499,7 +481,6 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
                 ),
                 const SizedBox(height: 20),
 
-                // Motivasi Singkat
                 const Text(
                   'Motivasi Singkat (Mengapa Anda tertarik?)',
                   style: TextStyle(
@@ -533,7 +514,6 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
                 ),
                 const SizedBox(height: 32),
 
-                // Donation Amount Card 
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -556,7 +536,6 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
                 ),
                 const SizedBox(height: 8),
 
-                // Exchange Rate Info
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
@@ -588,7 +567,6 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Header
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -596,7 +574,6 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
                             'Jumlah Donasi',
                             style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blue[900]),
                           ),
-                          // Currency Selector
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
@@ -621,6 +598,7 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
                               onChanged: (value) {
                                 if (value != null) {
                                   setState(() => _selectedCurrency = value);
+                                  print('💱 Currency changed to: $_selectedCurrency');
                                 }
                               },
                               underline: const SizedBox.shrink(),
@@ -631,7 +609,6 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
                       ),
                       const SizedBox(height: 32), 
 
-                      // Submit Button
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(

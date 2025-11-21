@@ -78,8 +78,11 @@ class _CreateEventPageState extends State<CreateEventPage> {
       _selectedCity = e.location.city.isNotEmpty ? e.location.city : null;
       _districtController.text = e.location.district;
       _villageController.text = e.location.village;
+      
+      // ✅ PERBAIKAN: Display timezone lokal dari UTC saat edit
       _startDateTime = e.eventStartTime.toLocal();
       _endDateTime = e.eventEndTime.toLocal();
+      
       _targetVolunteerController.text = e.targetVolunteerCount.toString();
       _feeController.text = e.participationFeeIdr == 0 ? '' : e.participationFeeIdr.toString();
       
@@ -171,7 +174,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
     });
   }
 
-  // ✅ PERBAIKAN #1: Helper function untuk convert local time ke UTC
+  // ✅ PERBAIKAN: Convert LOCAL time (user input) ke UTC untuk disimpan di database
   DateTime _localTimeToUTC(DateTime localTime) {
     // Asumsikan user di WIB (UTC+7)
     // Untuk convert dari local ke UTC, kurangi offset timezone
@@ -222,7 +225,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
                        widget.currentUser.organizationName ?? '-',
         organizerImageUrl: widget.currentUser.profileImagePath,
         location: location,
-        // ✅ PERBAIKAN #1: Convert local time ke UTC dengan helper
+        // ✅ PERBAIKAN: Convert local time ke UTC dengan helper
         eventStartTime: _localTimeToUTC(_startDateTime!),
         eventEndTime: _localTimeToUTC(_endDateTime!),
         targetVolunteerCount: int.tryParse(_targetVolunteerController.text) ?? 0,
@@ -247,6 +250,10 @@ class _CreateEventPageState extends State<CreateEventPage> {
         setState(() => _isSubmitting = false);
         
         if (resultEvent != null) {
+          print('✅ Event saved successfully');
+          print('   Start (UTC): ${resultEvent.eventStartTime}');
+          print('   Start (Local): ${resultEvent.eventStartTime.toLocal()}');
+          
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('${isNewEvent ? 'Kegiatan berhasil didaftarkan' : 'Kegiatan berhasil diperbarui'}!'),
@@ -454,7 +461,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
                     decoration: const InputDecoration(border: OutlineInputBorder()),
                     child: Text(_startDateTime == null
                         ? 'Pilih tanggal & waktu mulai'
-                        : '${_startDateTime!.toLocal()}'.split('.').first.replaceAll('T', ' ')),
+                        : '${_startDateTime!}'.split('.').first.replaceAll('T', ' ')),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -467,7 +474,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
                     decoration: const InputDecoration(border: OutlineInputBorder()),
                     child: Text(_endDateTime == null
                         ? 'Pilih tanggal & waktu selesai'
-                        : '${_endDateTime!.toLocal()}'.split('.').first.replaceAll('T', ' ')),
+                        : '${_endDateTime!}'.split('.').first.replaceAll('T', ' ')),
                   ),
                 ),
                 const SizedBox(height: 16),
