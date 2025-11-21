@@ -164,22 +164,25 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
         donationAmount: widget.event.participationFeeIdr,
         paymentMethod: '',
         agreementNonRefundable: _agreementChecked,
+        paymentCurrency: _selectedCurrency, // ✅ PERBAIKAN: Simpan currency di registrasi
       );
 
       final regBox = Hive.box<VolunteerRegistration>('registrations');
       await regBox.put(registration.id, registration);
       print('✅ Registration saved to Hive (pending payment)');
+      print('   Currency: $_selectedCurrency');
 
       if (mounted) {
         setState(() => _isProcessing = false);
         
-        // Navigate ke payment dengan updated event
-        final result = await Navigator.push(
+        // Navigate ke payment dengan updated event dan currency
+        final result = await Navigator.push<bool>(
           context,
           MaterialPageRoute(
             builder: (context) => PaymentPage(
               registration: registration,
-              event: updatedEvent, 
+              event: updatedEvent,
+              selectedCurrency: _selectedCurrency, // ✅ PERBAIKAN: Pass currency
             ),
           ),
         );
@@ -215,8 +218,7 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
             }
           }
         } else {
-          // ✅ PERBAIKAN: Jika cancel atau error, JANGAN rollback
-          // Karena user sudah lihat payment screen, jadi registrasi tetap valid pending payment
+          // ✅ PERBAIKAN: Jika cancel atau error, data tetap tersimpan
           print('⚠️ User cancelled or navigated back from payment');
           print('   Registration kept as pending (isPaid: false)');
           print('   Registrasi tetap ada di Hive dengan status belum dibayar');
@@ -233,9 +235,6 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
       }
     } catch (e) {
       print('❌ Error in registration: $e');
-      
-      // ✅ Jika error, keep registrasi pending (jangan rollback)
-      // User bisa coba daftar ulang atau lanjut bayar nanti
       
       if (mounted) {
         setState(() => _isProcessing = false);
@@ -407,7 +406,7 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
-                    color: Colors.black87,
+                    color: Colors.pink,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -535,7 +534,7 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
                 const SizedBox(height: 32),
 
                 // Donation Amount Card 
-                  Row(
+                Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
@@ -577,100 +576,102 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
                     ],
                   ),
                 ),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.blue[50],
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.blue[100]!),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Header
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Jumlah Donasi',
-                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blue[900]),
-                            ),
-                            // Currency Selector
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: Colors.blue[300]!),
-                              ),
-                              child: DropdownButton<String>(
-                                value: _selectedCurrency,
-                                items: ['IDR', 'USD', 'EUR']
-                                    .map((currency) => DropdownMenuItem(
-                                      value: currency,
-                                      child: Text(
-                                        currency,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ))
-                                    .toList(),
-                                onChanged: (value) {
-                                  if (value != null) {
-                                    setState(() => _selectedCurrency = value);
-                                  }
-                                },
-                                underline: const SizedBox.shrink(),
-                                isDense: true,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 32), 
+                const SizedBox(height: 16),
 
-                // Submit Button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _isProcessing ? null : _proceedToPayment,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue[600],
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 0,
-                      disabledBackgroundColor: Colors.grey[400],
-                    ),
-                    child: _isProcessing
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[50],
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.blue[100]!),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Header
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Jumlah Donasi',
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blue[900]),
+                          ),
+                          // Currency Selector
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.blue[300]!),
                             ),
-                          )
-                        : const Text(
-                            'Lanjut ke Pembayaran',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
+                            child: DropdownButton<String>(
+                              value: _selectedCurrency,
+                              items: ['IDR', 'USD', 'EUR']
+                                  .map((currency) => DropdownMenuItem(
+                                    value: currency,
+                                    child: Text(
+                                      currency,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ))
+                                  .toList(),
+                              onChanged: (value) {
+                                if (value != null) {
+                                  setState(() => _selectedCurrency = value);
+                                }
+                              },
+                              underline: const SizedBox.shrink(),
+                              isDense: true,
                             ),
                           ),
+                        ],
+                      ),
+                      const SizedBox(height: 32), 
+
+                      // Submit Button
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: _isProcessing ? null : _proceedToPayment,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue[600],
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 0,
+                            disabledBackgroundColor: Colors.grey[400],
+                          ),
+                          child: _isProcessing
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                )
+                              : const Text(
+                                  'Lanjut ke Pembayaran',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
-              ]
-          )
-        )
+        ),
       ),
-    )
     );
   }
 }

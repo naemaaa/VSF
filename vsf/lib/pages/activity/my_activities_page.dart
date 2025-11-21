@@ -6,6 +6,7 @@ import '../../models/user_model.dart';
 import '../../models/volunteer_registration.dart';
 import '../../services/event_service.dart';
 import 'activity_detail_page.dart';
+import '../payment/payment_page.dart'; // ✅ PERBAIKAN: Tambah import
 
 class MyActivitiesPage extends StatefulWidget {
   final UserModel currentUser;
@@ -149,6 +150,7 @@ class _MyActivitiesPageState extends State<MyActivitiesPage> with SingleTickerPr
 
   Widget _buildEventCard(EventModel event, VolunteerRegistration registration) {
     final bool isCompleted = event.isPast;
+    final bool isPaid = registration.isPaid; // ✅ PERBAIKAN: Track payment status
 
     return GestureDetector(
       onTap: () async {
@@ -227,6 +229,59 @@ class _MyActivitiesPageState extends State<MyActivitiesPage> with SingleTickerPr
                             ),
                           ],
                         ),
+                        // ✅ PERBAIKAN: Tampilkan status pembayaran
+                        if (!isPaid)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.orange[50],
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(
+                                  color: Colors.orange[300]!,
+                                  width: 1,
+                                ),
+                              ),
+                              child: Text(
+                                '⏳ Belum Dibayar',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.orange[700],
+                                ),
+                              ),
+                            ),
+                          )
+                        else
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.green[50],
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(
+                                  color: Colors.green[300]!,
+                                  width: 1,
+                                ),
+                              ),
+                              child: Text(
+                                '✅ Sudah Dibayar',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.green[700],
+                                ),
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                   ),
@@ -273,6 +328,35 @@ class _MyActivitiesPageState extends State<MyActivitiesPage> with SingleTickerPr
                           ),
                         ),
                       ],
+                    )
+                  // ✅ PERBAIKAN: Jika belum dibayar, tunjukkan opsi untuk melanjutkan pembayaran
+                  else if (!isPaid && !isCompleted)
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () async {
+                          // Buka payment page untuk melanjutkan pembayaran
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => PaymentPage(
+                                registration: registration,
+                                event: event,
+                                selectedCurrency: registration.paymentCurrency ?? 'IDR',
+                              ),
+                            ),
+                          );
+                          _loadRegisteredEvents();
+                        },
+                        style: TextButton.styleFrom(
+                          backgroundColor: Colors.amber[50],
+                          foregroundColor: Colors.amber[700],
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: const Text('Lanjutkan Pembayaran'),
+                      ),
                     )
                   else
                     Expanded(

@@ -6,22 +6,30 @@ import 'confirm_payment_page.dart';
 class PaymentPage extends StatefulWidget {
   final VolunteerRegistration registration;
   final EventModel event;
-  final String? selectedCurrency;
+  final String? selectedCurrency; // ✅ PERBAIKAN: Tambah parameter
 
   const PaymentPage({
     super.key,
     required this.registration,
     required this.event,
-    this.selectedCurrency,
+    this.selectedCurrency, // ✅ PERBAIKAN: Terima dari parameter
   });
 
   @override
   State<PaymentPage> createState() => _PaymentPageState();
 }
 
-
 class _PaymentPageState extends State<PaymentPage> {
   String? _selectedMethod;
+  late String _currentCurrency; // ✅ PERBAIKAN: Gunakan late dan initialize di initState
+
+  @override
+  void initState() {
+    super.initState();
+    // ✅ PERBAIKAN: Initialize currency dari parameter atau default ke IDR
+    _currentCurrency = widget.selectedCurrency ?? 'IDR';
+    print('💱 PaymentPage initialized with currency: $_currentCurrency');
+  }
 
   final List<Map<String, dynamic>> _paymentMethods = [
     {
@@ -68,18 +76,24 @@ class _PaymentPageState extends State<PaymentPage> {
     },
   ];
 
-    void _proceedToConfirmation() {
-      if (_selectedMethod == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Silakan pilih metode pembayaran'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
+  final Map<String, double> _exchangeRates = {  
+    'IDR': 1.0,
+    'USD': 15800.0,
+    'EUR': 17200.0,
+  };
 
-    // Update registration dengan payment method
+  void _proceedToConfirmation() {
+    if (_selectedMethod == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Silakan pilih metode pembayaran'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // ✅ PERBAIKAN: Update registration dengan payment method & currency
     final updatedRegistration = VolunteerRegistration(
       id: widget.registration.id,
       eventId: widget.registration.eventId,
@@ -94,8 +108,12 @@ class _PaymentPageState extends State<PaymentPage> {
       donationAmount: widget.registration.donationAmount,
       paymentMethod: _getMethodName(_selectedMethod!),
       isPaid: false,
-      paymentCurrency: _currentCurrency,
+      paymentCurrency: _currentCurrency, // ✅ PERBAIKAN: Gunakan currency yang sudah diinit
     );
+
+    print('💳 Proceeding to confirmation');
+    print('   Currency: $_currentCurrency');
+    print('   Method: ${_getMethodName(_selectedMethod!)}');
 
     Navigator.push(
       context,
@@ -103,7 +121,7 @@ class _PaymentPageState extends State<PaymentPage> {
         builder: (context) => ConfirmPaymentPage(
           registration: updatedRegistration,
           event: widget.event,
-          paymentCurrency: _currentCurrency,
+          paymentCurrency: _currentCurrency, // ✅ PERBAIKAN: Pass currency
         ),
       ),
     );
@@ -113,13 +131,27 @@ class _PaymentPageState extends State<PaymentPage> {
     return _paymentMethods.firstWhere((m) => m['id'] == id)['name'];
   }
 
+  double _convertPrice(int priceIDR, String toCurrency) {
+    if (toCurrency == 'IDR') return priceIDR.toDouble();
+    final rate = _exchangeRates[toCurrency] ?? 1.0;
+    return priceIDR / rate;
+  }
 
-late String _currentCurrency;  
-final Map<String, double> _exchangeRates = {  
-  'IDR': 1.0,
-  'USD': 15800.0,
-  'EUR': 17200.0,
-};
+  String _formatCurrency(double amount, String currency) {
+    switch (currency) {
+      case 'IDR':
+        return 'Rp ${amount.toStringAsFixed(0).replaceAllMapped(
+          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+          (Match m) => '${m[1]}.',
+        )}';
+      case 'USD':
+        return '\$${amount.toStringAsFixed(2)}';
+      case 'EUR':
+        return '€${amount.toStringAsFixed(2)}';
+      default:
+        return amount.toStringAsFixed(2);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -158,11 +190,27 @@ final Map<String, double> _exchangeRates = {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  widget.event.formattedPrice,
+                  _formatCurrency(
+                    _convertPrice(widget.event.participationFeeIdr, _currentCurrency),
+                    _currentCurrency,
+                  ),
                   style: TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.bold,
                     color: Colors.blue[600],
+                  ),
+                ),
+                // ✅ PERBAIKAN: Tampilkan currency yang aktif
+                const SizedBox(height: 8),
+                Text(
+                  _currentCurrency == 'IDR' 
+                    ? 'Rupiah Indonesia' 
+                    : _currentCurrency == 'USD'
+                      ? 'Dolar Amerika'
+                      : 'Euro',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
                   ),
                 ),
               ],

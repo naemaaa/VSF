@@ -20,7 +20,7 @@ class _ActivityListPageState extends State<ActivityListPage> {
   List<EventModel> _filteredEvents = [];
   String _selectedCategory = 'Semua';
   String _selectedLocation = 'Semua';
-  String _selectedCurrency = 'IDR';  
+  final String _selectedCurrency = 'IDR';  
 
   final Map<String, double> _exchangeRates = {  
     'IDR': 1.0,
