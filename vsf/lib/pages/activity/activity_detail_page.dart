@@ -20,6 +20,9 @@ class ActivityDetailPage extends StatefulWidget {
     required this.event,
     required this.currentUser,
   });
+  DateTime _convertUTCToLocal(DateTime utcTime, int offsetHours) {
+    return utcTime.add(Duration(hours: offsetHours));
+  }
 
   @override
   State<ActivityDetailPage> createState() => _ActivityDetailPageState();
@@ -694,10 +697,8 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
                     ),
                   ),
                 ).then((result) {
-                  // ✅ PERBAIKAN: Refresh event saat kembali dari register
                   if (result == true) {
                     print('🔄 Returning from register/payment, refreshing event...');
-                    Future.delayed(const Duration(milliseconds: 500), () {
                       if (mounted) {
                         final eventBox = Hive.box<EventModel>('events');
                         final updatedEvent = eventBox.get(widget.event.id);
@@ -710,7 +711,6 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
                           });
                         }
                       }
-                    });
                   }
                 });
               },
@@ -853,30 +853,35 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
     }
   }
 
+  // ✅ PERBAIKAN #1: Fungsi konversi UTC ke Local timezone
+DateTime _convertUTCToLocal(DateTime utcTime, int offsetHours) {
+  return utcTime.add(Duration(hours: offsetHours));
+}
+
+
   String _getConvertedTime(EventModel event) {
-    int offsetHours = 0;
-    switch (_selectedTimezone) {
-      case 'WIB':
-        offsetHours = 7;
-        break;
-      case 'WITA':
-        offsetHours = 8;
-        break;
-      case 'WIT':
-        offsetHours = 9;
-        break;
-      case 'London':
-        offsetHours = 0; 
-        break;
-    }
-    final startUtc = event.eventStartTime;
-    final endUtc = event.eventEndTime;
-    
-    final convertedStart = startUtc.add(Duration(hours: offsetHours));
-    final convertedEnd = endUtc.add(Duration(hours: offsetHours));
-    final formatter = DateFormat('HH:mm');
-    return '${formatter.format(convertedStart)} - ${formatter.format(convertedEnd)}';
+  int offsetHours = 0;
+  switch (_selectedTimezone) {
+    case 'WIB':
+      offsetHours = 7;
+      break;
+    case 'WITA':
+      offsetHours = 8;
+      break;
+    case 'WIT':
+      offsetHours = 9;
+      break;
+    case 'London':
+      offsetHours = 0; 
+      break;
   }
+  
+  // ✅ GANTI KE SINI (perbaikan):
+    final startLocal = _convertUTCToLocal(event.eventStartTime, offsetHours);
+    final endLocal = _convertUTCToLocal(event.eventEndTime, offsetHours);
+    final formatter = DateFormat('HH:mm');
+    return '${formatter.format(startLocal)} - ${formatter.format(endLocal)}';
+    }
 
   Widget _buildCurrencyCard(String currency, String amount, Color color) {
     return Container(

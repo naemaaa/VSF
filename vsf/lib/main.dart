@@ -12,6 +12,7 @@ import 'models/article_model.dart';
 import 'models/volunteer_registration.dart';
 import 'models/user_stats_model.dart';
 import 'services/notification_service.dart';
+import 'models/notification_model.dart';
 
 
 // Import services
@@ -30,14 +31,7 @@ void main() async {
   // Initialize Hive
   await Hive.initFlutter();
 
-  // Delete all Hive boxes (untuk testing - COMMENT ini kalau sudah prod)
-  // try {
-  //   await Hive.deleteFromDisk();
-  // } catch (e) {
-  //   print('Error deleting Hive data: $e');
-  // }
-  await Hive.deleteBoxFromDisk('user_stats');
-  await Hive.deleteBoxFromDisk('articles');
+   await Hive.deleteBoxFromDisk('articles');
   // Register Adapters
   Hive.registerAdapter(UserTypeAdapter());
   Hive.registerAdapter(UserModelAdapter());
@@ -46,6 +40,7 @@ void main() async {
   Hive.registerAdapter(EventModelAdapter());
   Hive.registerAdapter(VolunteerRegistrationAdapter());
   Hive.registerAdapter(UserStatsAdapter());
+  Hive.registerAdapter(NotificationModelAdapter());
   
   
 
@@ -55,6 +50,7 @@ void main() async {
   await Hive.openBox<ArticleModel>('articles');
   await Hive.openBox<EventModel>('events');
   await Hive.openBox<VolunteerRegistration>('registrations');
+  await Hive.openBox<NotificationModel>('notifications');
 
 
   // Initialize Notification Service
@@ -249,9 +245,10 @@ Future<void> seedDummyData() async {
       category: 'Pendidikan',
     );
 
-    await eventBox.add(event1);
-    await eventBox.add(event2);
-    await eventBox.add(event3);
+    // FIX #1: Ganti .add() menjadi .put(event.id, event) untuk konsistensi kunci String
+    await eventBox.put(event1.id, event1);
+    await eventBox.put(event2.id, event2);
+    await eventBox.put(event3.id, event3);
 
     print('✅ Seed Events completed: 3 events');
   }

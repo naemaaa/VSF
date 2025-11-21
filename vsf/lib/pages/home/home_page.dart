@@ -11,6 +11,8 @@ import '../../models/event_model.dart';
 import '../../models/article_model.dart';
 import '../../models/user_stats_model.dart';
 import '../article/article_list_page.dart';
+import '../../models/notification_model.dart';
+import '../../pages/notification/notification_list_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -19,12 +21,13 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-// ✅ PERBAIKAN #3: Tambahkan WidgetsBindingObserver untuk lifecycle
 class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   UserModel? _currentUser;
   UserStats? _userStats;
   late final Box<UserModel> _userBox;
   late final Box<UserStats> _statsBox;
+  int _unreadNotificationCount = 0;
+  late Box<NotificationModel> _notificationBox;
   
   List<EventModel> _activeEvents = []; 
   List<ArticleModel> _articles = [];
@@ -34,32 +37,53 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   final ArticleService _articleService = ArticleService();
   final EventService _eventService = EventService(); 
 
-  @override
-  void initState() {
-    super.initState();
-    // ✅ PERBAIKAN #3: Tambahkan observer untuk lifecycle
-    WidgetsBinding.instance.addObserver(this);
+  Future<void> _loadUnreadNotifications() async {
+  try {
+    if (_currentUser == null) return;
     
-    _userBox = Hive.box<UserModel>('users');
-    _statsBox = Hive.box<UserStats>('user_stats');
-    
-    _loadCurrentUser();
-    _loadData();
-    
-    _userBox.listenable().addListener(() {
-      print('📦 Users box changed');
-      _loadCurrentUser();
-      if (mounted) setState(() {});
-    });
-    
-    // ✅ PERBAIKAN #3: Listen ke stats changes dengan proper listener
-    _statsBox.listenable().addListener(() {
-      print('📊 Stats box changed, refreshing UI');
-      if (_currentUser != null) {
-        _loadUserStats(_currentUser!.id);
+    int unreadCount = 0;
+    for (var notif in _notificationBox.values) {
+      if (notif.userId == _currentUser!.id && !notif.isRead) {
+        unreadCount++;
       }
-    });
+    }
+    
+    if (mounted) {
+      setState(() => _unreadNotificationCount = unreadCount);
+      print('📌 Unread notifications: $unreadCount');
+    }
+  } catch (e) {
+    print('⚠️ Error loading unread notifications: $e');
   }
+}
+
+
+  @override
+    void initState() {
+      super.initState();
+      WidgetsBinding.instance.addObserver(this);
+      
+      _userBox = Hive.box<UserModel>('users');
+      _statsBox = Hive.box<UserStats>('user_stats');
+      _notificationBox = Hive.box<NotificationModel>('notifications'); 
+      
+      _loadCurrentUser();
+      _loadData();
+      _loadUnreadNotifications(); 
+      
+      _userBox.listenable().addListener(() {
+        print('📦 Users box changed');
+        _loadCurrentUser();
+        if (mounted) setState(() {});
+      });
+      
+      _statsBox.listenable().addListener(() {
+        print('📊 Stats box changed, refreshing UI');
+        if (_currentUser != null) {
+          _loadUserStats(_currentUser!.id);
+        }
+      });
+    }
 
   @override
   void dispose() {
@@ -188,12 +212,43 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined, color: Colors.black87),
-            onPressed: () {},
-          ),
-        ],
-      ),
+          Stack(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.notifications_outlined, color: Colors.black87),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const NotificationListPage(),
+                  ),
+                );
+              },
+            ),
+            if (_unreadNotificationCount > 0)
+              Positioned(
+                right: 8,
+                top: 8,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text(
+                    _unreadNotificationCount.toString(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ],
+    ),
       body: RefreshIndicator(
         onRefresh: () => _loadData(forceRefresh: true),
         child: SingleChildScrollView(

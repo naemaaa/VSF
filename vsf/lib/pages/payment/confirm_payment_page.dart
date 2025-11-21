@@ -4,6 +4,7 @@ import 'dart:math';
 import '../../models/event_model.dart';
 import '../../models/volunteer_registration.dart';
 import '../../models/user_stats_model.dart';
+import '../../models/notification_model.dart';
 import '../../services/notification_service.dart';
 import '../../services/event_service.dart';
 
@@ -29,125 +30,141 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
   Future<void> _processPayment() async {
     try {
       setState(() => _isProcessing = true);
-
       // Simulasi payment processing
-      await Future.delayed(const Duration(seconds: 3));
+await Future.delayed(const Duration(seconds: 3));
 
-      // Simulasi success rate 95%
-      final isSuccess = Random().nextDouble() > 0.05;
+// Simulasi success rate 95%
+final isSuccess = Random().nextDouble() > 0.05;
 
-      if (!mounted) return;
+if (!mounted) return;
 
-      if (isSuccess) {
-        try {
-          final registrationBox = Hive.box<VolunteerRegistration>('registrations');
-          final eventBox = Hive.box<EventModel>('events');
-          final statsBox = Hive.box<UserStats>('user_stats');
+if (isSuccess) {
+  try {
+    final registrationBox = Hive.box<VolunteerRegistration>('registrations');
+    final eventBox = Hive.box<EventModel>('events');
+    final statsBox = Hive.box<UserStats>('user_stats');
+    
+    // ✅ TAMBAHAN: Import NotificationModel
+    final notificationBox = Hive.box<NotificationModel>('notifications');
 
-          // ✅ 1. Update registration status jadi paid
-          final completedRegistration = VolunteerRegistration(
-            id: widget.registration.id,
-            eventId: widget.registration.eventId,
-            volunteerId: widget.registration.volunteerId,
-            volunteerName: widget.registration.volunteerName,
-            volunteerEmail: widget.registration.volunteerEmail,
-            volunteerPhone: widget.registration.volunteerPhone,
-            volunteerNik: widget.registration.volunteerNik,
-            birthDate: widget.registration.birthDate,
-            agreementNonRefundable: widget.registration.agreementNonRefundable,
-            motivation: widget.registration.motivation,
-            donationAmount: widget.registration.donationAmount,
-            paymentMethod: widget.registration.paymentMethod,
-            isPaid: true,
-          );
-          await registrationBox.put(completedRegistration.id, completedRegistration);
-          print('✅ Registration marked as paid');
+    // ✅ 1. Update registration status jadi paid
+    final completedRegistration = VolunteerRegistration(
+      id: widget.registration.id,
+      eventId: widget.registration.eventId,
+      volunteerId: widget.registration.volunteerId,
+      volunteerName: widget.registration.volunteerName,
+      volunteerEmail: widget.registration.volunteerEmail,
+      volunteerPhone: widget.registration.volunteerPhone,
+      volunteerNik: widget.registration.volunteerNik,
+      birthDate: widget.registration.birthDate,
+      agreementNonRefundable: widget.registration.agreementNonRefundable,
+      motivation: widget.registration.motivation,
+      donationAmount: widget.registration.donationAmount,
+      paymentMethod: widget.registration.paymentMethod,
+      isPaid: true,
+    );
+    await registrationBox.put(completedRegistration.id, completedRegistration);
+    print('✅ Registration marked as paid');
 
-          // ✅ 2. Update UserStats
-          UserStats? userStats;
-          for (var stat in statsBox.values) {
-            if (stat.userId == widget.registration.volunteerId) {
-              userStats = stat;
-              break;
-            }
-          }
-
-          if (userStats == null) {
-            userStats = UserStats(
-              userId: widget.registration.volunteerId,
-              totalParticipations: 1,
-              totalDonations: widget.registration.donationAmount,
-            );
-            await statsBox.add(userStats);
-            print('✅ Created new UserStats');
-          } else {
-            userStats.addParticipation(widget.registration.donationAmount);
-            await userStats.save();
-            print('✅ Updated UserStats');
-          }
-
-          // ✅ 3. PENTING: Fetch event terbaru dari API dan sync ke Hive
-          print('🔄 Fetching updated event from API...');
-          final updatedEventFromAPI = await _eventService.getEventById(widget.event.id);
-          if (updatedEventFromAPI != null) {
-            await eventBox.put(updatedEventFromAPI.id, updatedEventFromAPI);
-            print('✅ Event synced to Hive from API');
-            print('   Registered IDs: ${updatedEventFromAPI.registeredVolunteerIds}');
-            print('   Current count: ${updatedEventFromAPI.currentVolunteerCount}');
-          } else {
-            // Fallback: update event lokal dengan data yang kita tahu
-            final localEvent = widget.event.copyWith(
-              registeredVolunteerIds: [...widget.event.registeredVolunteerIds, widget.registration.volunteerId],
-              currentVolunteerCount: widget.event.currentVolunteerCount + 1,
-            );
-            await eventBox.put(localEvent.id, localEvent);
-            print('⚠️ API sync failed, using local data');
-          }
-
-          // ✅ 4. Show notification
-          try {
-            await _notificationService.showPaymentSuccessNotification(
-              eventTitle: widget.event.title,
-              amount: widget.registration.donationAmount,
-            );
-            print('✅ Notification sent');
-          } catch (e) {
-            print('⚠️ Notification error: $e');
-          }
-
-          _showSuccessDialog();
-
-        } catch (e) {
-          print('❌ Error in payment success flow: $e');
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-            );
-          }
-          setState(() => _isProcessing = false);
-        }
-
-      } else {
-        // Payment failed
-        setState(() => _isProcessing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Pembayaran gagal. Silakan coba lagi.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-
-    } catch (e) {
-      print('❌ Exception: $e');
-      if (mounted) {
-        setState(() => _isProcessing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-        );
+    // ✅ 2. Update UserStats (PENTING: ensure stats tersimpan)
+    UserStats? userStats;
+    for (var stat in statsBox.values) {
+      if (stat.userId == widget.registration.volunteerId) {
+        userStats = stat;
+        break;
       }
     }
+
+    if (userStats == null) {
+      userStats = UserStats(
+        userId: widget.registration.volunteerId,
+        totalParticipations: 1,
+        totalDonations: widget.registration.donationAmount,
+      );
+      await statsBox.add(userStats);
+      print('✅ Created new UserStats');
+    } else {
+      userStats.addParticipation(widget.registration.donationAmount);
+      await userStats.save();
+      print('✅ Updated UserStats: ${userStats.totalParticipations} participations, Rp${userStats.totalDonations} donated');
+    }
+
+    // ✅ 3. Fetch event terbaru dari API dan sync ke Hive
+    print('🔄 Fetching updated event from API...');
+    final updatedEventFromAPI = await _eventService.getEventById(widget.event.id);
+    if (updatedEventFromAPI != null) {
+      await eventBox.put(updatedEventFromAPI.id, updatedEventFromAPI);
+      print('✅ Event synced to Hive from API');
+      print('   Registered IDs: ${updatedEventFromAPI.registeredVolunteerIds}');
+      print('   Current count: ${updatedEventFromAPI.currentVolunteerCount}');
+    } else {
+      // Fallback: update event lokal dengan data yang kita tahu
+      final localEvent = widget.event.copyWith(
+        registeredVolunteerIds: [...widget.event.registeredVolunteerIds, widget.registration.volunteerId],
+        currentVolunteerCount: widget.event.currentVolunteerCount + 1,
+      );
+      await eventBox.put(localEvent.id, localEvent);
+      print('⚠️ API sync failed, using local data');
+    }
+
+    // ✅ 4. Simpan notification history (PERBAIKAN #4)
+    final notification = NotificationModel(
+      id: 'notif_${DateTime.now().millisecondsSinceEpoch}',
+      userId: widget.registration.volunteerId,
+      type: 'payment_success',
+      title: '✅ Pembayaran Berhasil!',
+      message: 'Pembayaran untuk "${widget.event.title}" sebesar ${widget.registration.formattedDonation} telah diproses.',
+      relatedEventId: widget.event.id,
+      createdAt: DateTime.now(),
+      isRead: false,
+    );
+    await notificationBox.put(notification.id, notification);
+    print('✅ Notification saved to history');
+
+    // ✅ 5. Show local notification
+    try {
+      await _notificationService.showPaymentSuccessNotification(
+        eventTitle: widget.event.title,
+        amount: widget.registration.donationAmount,
+      );
+      print('✅ Local notification sent');
+    } catch (e) {
+      print('⚠️ Notification error: $e');
+    }
+
+    _showSuccessDialog();
+
+  } catch (e) {
+    print('❌ Error in payment success flow: $e');
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    }
+    setState(() => _isProcessing = false);
   }
+
+} else {
+  // Payment failed
+  setState(() => _isProcessing = false);
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('Pembayaran gagal. Silakan coba lagi.'),
+      backgroundColor: Colors.red,
+    ),
+  );
+}
+} catch (e) {
+print('❌ Exception: $e');
+if (mounted) {
+setState(() => _isProcessing = false);
+ScaffoldMessenger.of(context).showSnackBar(
+SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+);
+}
+}
+}
+
 
   void _showSuccessDialog() {
     showDialog(
