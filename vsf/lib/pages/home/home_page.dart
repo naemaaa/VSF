@@ -65,7 +65,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       
       _userBox = Hive.box<UserModel>('users');
       _statsBox = Hive.box<UserStats>('user_stats');
-      _notificationBox = Hive.box<NotificationModel>('notifications'); 
+      _notificationBox = Hive.box<NotificationModel>('notifications');  
       
       _loadCurrentUser();
       _loadData();
@@ -83,16 +83,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           _loadUserStats(_currentUser!.id);
         }
       });
+
+      // ✅ TAMBAH LISTENER INI:
+      _notificationBox.listenable().addListener(() {
+        print('🔔 Notification box changed');
+        _loadUnreadNotifications();
+      });
     }
 
   @override
   void dispose() {
-    // ✅ PERBAIKAN #3: Remove observer saat dispose
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
-  // ✅ PERBAIKAN #3: Lifecycle callback untuk detect app resume
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
@@ -152,13 +156,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     try {
       print('🌐 Loading data (forceRefresh: $forceRefresh)...');
       
-      // 1. Load Event Aktif (dari API dengan caching)
       final events = await _eventService.getActiveEvents(forceRefresh: forceRefresh);
 
-      // 2. Load Artikel Unggulan (dari API dengan caching)
       final articles = await _articleService.getFeaturedArticles();
       
-      // Urutkan event berdasarkan popularitas untuk "Aktivitas Populer"
       events.sort((a, b) => b.currentVolunteerCount.compareTo(a.currentVolunteerCount));
       
       if (mounted) {

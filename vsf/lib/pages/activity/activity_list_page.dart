@@ -20,6 +20,13 @@ class _ActivityListPageState extends State<ActivityListPage> {
   List<EventModel> _filteredEvents = [];
   String _selectedCategory = 'Semua';
   String _selectedLocation = 'Semua';
+  String _selectedCurrency = 'IDR';  
+
+  final Map<String, double> _exchangeRates = {  
+    'IDR': 1.0,
+    'USD': 15800.0,
+    'EUR': 17200.0,
+  };
 
   final List<String> _categories = [
     'Semua',
@@ -67,6 +74,29 @@ class _ActivityListPageState extends State<ActivityListPage> {
     'Kepulauan Riau',
 
   ];
+
+  double _convertPrice(int priceIDR, String toCurrency) {
+  if (toCurrency == 'IDR') return priceIDR.toDouble();
+  final rate = _exchangeRates[toCurrency] ?? 1.0;
+  return priceIDR / rate;
+  }
+
+  String _formatCurrency(double amount, String currency) {
+    switch (currency) {
+      case 'IDR':
+        return 'Rp ${amount.toStringAsFixed(0).replaceAllMapped(
+          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+          (Match m) => '${m[1]}.',
+        )}';
+      case 'USD':
+        return '\$${amount.toStringAsFixed(2)}';
+      case 'EUR':
+        return '€${amount.toStringAsFixed(2)}';
+      default:
+        return amount.toStringAsFixed(2);
+    }
+  }
+
 
   @override
   void initState() {

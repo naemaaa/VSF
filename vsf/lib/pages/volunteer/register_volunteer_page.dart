@@ -23,6 +23,12 @@ class RegisterVolunteerPage extends StatefulWidget {
 class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
   final EventService _eventService = EventService();
   final _formKey = GlobalKey<FormState>();
+  String _selectedCurrency = 'IDR'; 
+  final Map<String, double> _exchangeRates = {  
+    'IDR': 1.0,
+    'USD': 15800.0,
+    'EUR': 17200.0,
+  };
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
@@ -30,6 +36,38 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
   DateTime? _selectedBirthDate;
   bool _agreementChecked = false;
   bool _isProcessing = false;
+
+  double _convertPrice(int priceIDR, String toCurrency) {
+    if (toCurrency == 'IDR') return priceIDR.toDouble();
+    final rate = _exchangeRates[toCurrency] ?? 1.0;
+    return priceIDR / rate;
+  }
+
+  String _formatCurrency(double amount, String currency) {
+    switch (currency) {
+      case 'IDR':
+        return 'Rp ${amount.toStringAsFixed(0).replaceAllMapped(
+          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+          (Match m) => '${m[1]}.',
+        )}';
+      case 'USD':
+        return '\$${amount.toStringAsFixed(2)}';
+      case 'EUR':
+        return '€${amount.toStringAsFixed(2)}';
+      default:
+        return amount.toStringAsFixed(2);
+    }
+  }
+
+  String _getExchangeRateInfo() {
+    if (_selectedCurrency == 'IDR') {
+      return 'Harga dalam Rupiah Indonesia';
+    } else if (_selectedCurrency == 'USD') {
+      return '1 USD = Rp 15.800 (kurs acuan)';
+    } else {
+      return '1 EUR = Rp 17.200 (kurs acuan)';
+    }
+  }
 
   @override
   void initState() {
@@ -128,7 +166,6 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
         agreementNonRefundable: _agreementChecked,
       );
 
-      // Save to Hive
       final regBox = Hive.box<VolunteerRegistration>('registrations');
       await regBox.put(registration.id, registration);
       print('✅ Registration saved to Hive (pending payment)');
@@ -142,7 +179,7 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
           MaterialPageRoute(
             builder: (context) => PaymentPage(
               registration: registration,
-              event: updatedEvent, // ✅ Pass updated event
+              event: updatedEvent, 
             ),
           ),
         );
@@ -497,55 +534,101 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
                 ),
                 const SizedBox(height: 32),
 
-                // Donation Info
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: widget.event.isFree ? Colors.green[50] : Colors.orange[50],
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: widget.event.isFree
-                          ? Colors.green[100]!
-                          : Colors.orange[100]!,
+                // Donation Amount Card 
+                  Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Total:',
+                      style: TextStyle(fontSize: 13, color: Colors.blue[700]),
                     ),
+                    Text(
+                      _formatCurrency(
+                        _convertPrice(widget.event.participationFeeIdr, _selectedCurrency),
+                        _selectedCurrency,
+                      ),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue[600],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+
+                // Exchange Rate Info
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.7),
+                    borderRadius: BorderRadius.circular(6),
                   ),
                   child: Row(
                     children: [
-                      Icon(
-                        Icons.payments_outlined,
-                        color: widget.event.isFree ? Colors.green[600] : Colors.orange[600],
-                      ),
-                      const SizedBox(width: 12),
+                      Icon(Icons.info_outline, size: 16, color: Colors.blue[600]),
+                      const SizedBox(width: 8),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Jumlah Donasi',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: widget.event.isFree
-                                    ? Colors.green[600]
-                                    : Colors.orange[600],
-                              ),
-                            ),
-                            Text(
-                              widget.event.formattedPrice,
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: widget.event.isFree
-                                    ? Colors.green[600]
-                                    : Colors.orange[600],
-                              ),
-                            ),
-                          ],
+                        child: Text(
+                          _getExchangeRateInfo(),
+                          style: TextStyle(fontSize: 11, color: Colors.blue[700]),
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 32),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.blue[50],
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.blue[100]!),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Header
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Jumlah Donasi',
+                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blue[900]),
+                            ),
+                            // Currency Selector
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.blue[300]!),
+                              ),
+                              child: DropdownButton<String>(
+                                value: _selectedCurrency,
+                                items: ['IDR', 'USD', 'EUR']
+                                    .map((currency) => DropdownMenuItem(
+                                      value: currency,
+                                      child: Text(
+                                        currency,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ))
+                                    .toList(),
+                                onChanged: (value) {
+                                  if (value != null) {
+                                    setState(() => _selectedCurrency = value);
+                                  }
+                                },
+                                underline: const SizedBox.shrink(),
+                                isDense: true,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 32), 
 
                 // Submit Button
                 SizedBox(
@@ -583,8 +666,11 @@ class _RegisterVolunteerPageState extends State<RegisterVolunteerPage> {
               ],
             ),
           ),
-        ),
+              ]
+          )
+        )
       ),
+    )
     );
   }
 }

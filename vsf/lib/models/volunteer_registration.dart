@@ -52,6 +52,9 @@ class VolunteerRegistration {
   @HiveField(15)
   DateTime? feedbackSubmittedAt;
 
+  @HiveField(16)
+  String paymentCurrency; 
+
   VolunteerRegistration({
     required this.id,
     required this.eventId,
@@ -69,6 +72,7 @@ class VolunteerRegistration {
     DateTime? registeredAt,
     this.feedbackMessage,
     this.feedbackSubmittedAt,
+    this.paymentCurrency = 'IDR',
   }) : registeredAt = registeredAt ?? DateTime.now();
 
   // Check apakah sudah submit feedback

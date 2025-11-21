@@ -11,30 +11,38 @@ import '../../services/event_service.dart';
 class ConfirmPaymentPage extends StatefulWidget {
   final VolunteerRegistration registration;
   final EventModel event;
+  final String paymentCurrency;
 
   const ConfirmPaymentPage({
     super.key,
     required this.registration,
     required this.event,
+    this.paymentCurrency = 'IDR',
   });
 
   @override
   State<ConfirmPaymentPage> createState() => _ConfirmPaymentPageState();
-}
 
+
+}
+ 
 class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
   bool _isProcessing = false;
   final NotificationService _notificationService = NotificationService();
   final EventService _eventService = EventService();
 
+  late String _paymentCurrency;
+  final Map<String, double> _exchangeRates = {
+  'IDR': 1.0,
+  'USD': 15800.0,
+  'EUR': 17200.0,
+};
+
   Future<void> _processPayment() async {
     try {
       setState(() => _isProcessing = true);
-      // Simulasi payment processing
-await Future.delayed(const Duration(seconds: 3));
-
-// Simulasi success rate 95%
-final isSuccess = Random().nextDouble() > 0.05;
+      await Future.delayed(const Duration(seconds: 3));
+      final isSuccess = Random().nextDouble() > 0.05;
 
 if (!mounted) return;
 
@@ -62,6 +70,7 @@ if (isSuccess) {
       donationAmount: widget.registration.donationAmount,
       paymentMethod: widget.registration.paymentMethod,
       isPaid: true,
+      paymentCurrency: _paymentCurrency
     );
     await registrationBox.put(completedRegistration.id, completedRegistration);
     print('✅ Registration marked as paid');
@@ -229,6 +238,28 @@ SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
     );
   }
 
+
+  double _convertPrice(int priceIDR, String toCurrency) {
+  if (toCurrency == 'IDR') return priceIDR.toDouble();
+  final rate = _exchangeRates[toCurrency] ?? 1.0;
+  return priceIDR / rate;
+  }
+
+  String _formatCurrency(double amount, String currency) {
+  switch (currency) {
+    case 'IDR':
+      return 'Rp ${amount.toStringAsFixed(0).replaceAllMapped(
+        RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+        (Match m) => '${m[1]}.',
+      )}';
+    case 'USD':
+      return '\$${amount.toStringAsFixed(2)}';
+    case 'EUR':
+      return '€${amount.toStringAsFixed(2)}';
+    default:
+      return amount.toStringAsFixed(2);
+  }
+}
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -309,6 +340,7 @@ SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
             const Text('Detail Pembayaran',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
             const SizedBox(height: 12),
+
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -323,9 +355,14 @@ SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
                     children: [
                       const Text('Jumlah Donasi',
                           style: TextStyle(fontSize: 14, color: Colors.black54)),
-                      Text(widget.registration.formattedDonation,
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue[600])),
+                      Text(
+                        _formatCurrency(
+                          _convertPrice(widget.event.participationFeeIdr, _paymentCurrency),
+                          _paymentCurrency,
+                        ),
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue[600]),
+                      ),
                     ],
                   ),
                   const Divider(height: 24),
@@ -341,8 +378,7 @@ SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
                                 style: TextStyle(fontSize: 12, color: Colors.black54)),
                             const SizedBox(height: 2),
                             Text(widget.registration.paymentMethod,
-                                style:
-                                    const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                           ],
                         ),
                       ),
@@ -352,10 +388,33 @@ SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
                       ),
                     ],
                   ),
+                  const SizedBox(height: 12),
+                  // ✅ TAMPILKAN CURRENCY
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.7),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.blue[600], size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Pembayaran dalam $_paymentCurrency (${_paymentCurrency == 'IDR' ? 'Rupiah' : _paymentCurrency == 'USD' ? 'Dolar AS' : 'Euro'})',
+                            style: TextStyle(fontSize: 12, color: Colors.blue[700]),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
             const SizedBox(height: 32),
+
+
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(12)),

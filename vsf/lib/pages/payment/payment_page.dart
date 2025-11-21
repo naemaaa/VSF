@@ -6,16 +6,19 @@ import 'confirm_payment_page.dart';
 class PaymentPage extends StatefulWidget {
   final VolunteerRegistration registration;
   final EventModel event;
+  final String? selectedCurrency;
 
   const PaymentPage({
     super.key,
     required this.registration,
     required this.event,
+    this.selectedCurrency,
   });
 
   @override
   State<PaymentPage> createState() => _PaymentPageState();
 }
+
 
 class _PaymentPageState extends State<PaymentPage> {
   String? _selectedMethod;
@@ -65,16 +68,16 @@ class _PaymentPageState extends State<PaymentPage> {
     },
   ];
 
-  void _proceedToConfirmation() {
-    if (_selectedMethod == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Silakan pilih metode pembayaran'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
+    void _proceedToConfirmation() {
+      if (_selectedMethod == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Silakan pilih metode pembayaran'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
 
     // Update registration dengan payment method
     final updatedRegistration = VolunteerRegistration(
@@ -91,6 +94,7 @@ class _PaymentPageState extends State<PaymentPage> {
       donationAmount: widget.registration.donationAmount,
       paymentMethod: _getMethodName(_selectedMethod!),
       isPaid: false,
+      paymentCurrency: _currentCurrency,
     );
 
     Navigator.push(
@@ -99,6 +103,7 @@ class _PaymentPageState extends State<PaymentPage> {
         builder: (context) => ConfirmPaymentPage(
           registration: updatedRegistration,
           event: widget.event,
+          paymentCurrency: _currentCurrency,
         ),
       ),
     );
@@ -107,6 +112,14 @@ class _PaymentPageState extends State<PaymentPage> {
   String _getMethodName(String id) {
     return _paymentMethods.firstWhere((m) => m['id'] == id)['name'];
   }
+
+
+late String _currentCurrency;  
+final Map<String, double> _exchangeRates = {  
+  'IDR': 1.0,
+  'USD': 15800.0,
+  'EUR': 17200.0,
+};
 
   @override
   Widget build(BuildContext context) {
