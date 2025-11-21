@@ -1,6 +1,7 @@
+// create_event_page.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';  
+import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geocoding/geocoding.dart';
 import '../../widgets/location_picker.dart'; 
@@ -9,6 +10,9 @@ import '../../models/event_location.dart';
 import '../../models/user_model.dart';
 import '../../services/location_service.dart';
 import '../../services/event_service.dart'; 
+
+// ✅ PERBAIKAN #1: Hardcode timezone reference (Sesuai kode awal)
+const int USER_TIMEZONE_OFFSET_WIB = 7; // UTC+7 (WIB)
 
 class CreateEventPage extends StatefulWidget {
   final UserModel currentUser;
@@ -79,9 +83,14 @@ class _CreateEventPageState extends State<CreateEventPage> {
       _districtController.text = e.location.district;
       _villageController.text = e.location.village;
       
-      // ✅ PERBAIKAN: Display timezone lokal dari UTC saat edit
-      _startDateTime = e.eventStartTime.toLocal();
-      _endDateTime = e.eventEndTime.toLocal();
+      // ✅ PERBAIKAN #2: Convert dari UTC ke LOCAL untuk display (Sesuai kode awal)
+      // Database menyimpan dalam UTC, tapi user lihat dalam local timezone (WIB)
+      _startDateTime = _utcToLocalDisplay(e.eventStartTime);
+      _endDateTime = _utcToLocalDisplay(e.eventEndTime);
+      
+      print('📝 Edit Event Loaded:');
+      print('   UTC Start: ${e.eventStartTime}');
+      print('   Local Display: $_startDateTime');
       
       _targetVolunteerController.text = e.targetVolunteerCount.toString();
       _feeController.text = e.participationFeeIdr == 0 ? '' : e.participationFeeIdr.toString();
@@ -164,6 +173,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
     );
     if (time == null) return;
     
+    // Perhatikan: DateTime yang diambil dari DatePicker dan TimePicker adalah waktu LOKAL perangkat
     final dt = DateTime(date.year, date.month, date.day, time.hour, time.minute);
     setState(() {
       if (isStart) {
@@ -174,12 +184,27 @@ class _CreateEventPageState extends State<CreateEventPage> {
     });
   }
 
-  // ✅ PERBAIKAN: Convert LOCAL time (user input) ke UTC untuk disimpan di database
+  // ✅ PERBAIKAN #3: Convert dari LOCAL (user input/display) ke UTC untuk database (Sesuai kode awal)
   DateTime _localTimeToUTC(DateTime localTime) {
-    // Asumsikan user di WIB (UTC+7)
-    // Untuk convert dari local ke UTC, kurangi offset timezone
-    return localTime.subtract(const Duration(hours: 7));
+    // User di WIB = UTC+7
+    // Untuk convert ke UTC: kurangi offset
+    print('🕐 Converting Local to UTC:');
+    print('   Local (WIB): $localTime');
+    final utc = localTime.subtract(Duration(hours: USER_TIMEZONE_OFFSET_WIB));
+    print('   UTC: $utc');
+    return utc;
   }
+
+  // ✅ PERBAIKAN #4: Convert dari UTC (database) ke LOCAL untuk display/edit (Sesuai kode awal)
+  DateTime _utcToLocalDisplay(DateTime utcTime) {
+    // UTC ke WIB: tambah offset
+    print('🕐 Converting UTC to Local:');
+    print('   UTC: $utcTime');
+    final local = utcTime.add(Duration(hours: USER_TIMEZONE_OFFSET_WIB));
+    print('   Local (WIB): $local');
+    return local;
+  }
+
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate() || 
@@ -225,7 +250,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
                        widget.currentUser.organizationName ?? '-',
         organizerImageUrl: widget.currentUser.profileImagePath,
         location: location,
-        // ✅ PERBAIKAN: Convert local time ke UTC dengan helper
+        // ✅ PERBAIKAN #5: Convert user input (LOCAL WIB) ke UTC untuk simpan (Sesuai kode awal)
         eventStartTime: _localTimeToUTC(_startDateTime!),
         eventEndTime: _localTimeToUTC(_endDateTime!),
         targetVolunteerCount: int.tryParse(_targetVolunteerController.text) ?? 0,
@@ -252,7 +277,8 @@ class _CreateEventPageState extends State<CreateEventPage> {
         if (resultEvent != null) {
           print('✅ Event saved successfully');
           print('   Start (UTC): ${resultEvent.eventStartTime}');
-          print('   Start (Local): ${resultEvent.eventStartTime.toLocal()}');
+          // Gunakan _utcToLocalDisplay untuk verifikasi log
+          print('   Start (Local): ${_utcToLocalDisplay(resultEvent.eventStartTime)}'); 
           
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -409,6 +435,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
                 
                 const Text('Pilih Lokasi di Peta', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
+                // Asumsi widget LocationPicker sudah di-import
                 LocationPicker(
                   initialLocation: _selectedLocation,
                   onLocationPicked: _handleMapTap,

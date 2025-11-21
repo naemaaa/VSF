@@ -52,7 +52,7 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
 
           print('✅ Payment processing started...');
 
-          // ✅ 1. Update registration status jadi paid (dengan currency yang benar)
+          // ✅ PERBAIKAN #1: Update registration status jadi paid (dengan currency)
           final completedRegistration = VolunteerRegistration(
             id: widget.registration.id,
             eventId: widget.registration.eventId,
@@ -74,7 +74,7 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
           print('✅ Registration marked as paid');
           print('   Currency: ${widget.paymentCurrency}');
 
-          // ✅ 2. Update UserStats
+          // ✅ PERBAIKAN #2: Update UserStats
           UserStats? userStats;
           for (var stat in statsBox.values) {
             if (stat.userId == widget.registration.volunteerId) {
@@ -97,23 +97,31 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
             print('✅ Updated UserStats: ${userStats.totalParticipations} participations');
           }
 
-          // ✅ 3. Fetch event terbaru dari API dan sync ke Hive
+          // ✅ PERBAIKAN #3: Fetch event terbaru dari API dan sync ke Hive
           print('🔄 Fetching updated event from API...');
           final updatedEventFromAPI = await _eventService.getEventById(widget.event.id);
           if (updatedEventFromAPI != null) {
+            // Tambah volunteer ke event jika belum ada
+            if (!updatedEventFromAPI.registeredVolunteerIds.contains(widget.registration.volunteerId)) {
+              updatedEventFromAPI.registeredVolunteerIds.add(widget.registration.volunteerId);
+              updatedEventFromAPI.currentVolunteerCount++;
+            }
             await eventBox.put(updatedEventFromAPI.id, updatedEventFromAPI);
             print('✅ Event synced to Hive from API');
             print('   Current volunteer count: ${updatedEventFromAPI.currentVolunteerCount}');
+            print('   Registered IDs: ${updatedEventFromAPI.registeredVolunteerIds}');
           } else {
-            final localEvent = widget.event.copyWith(
-              registeredVolunteerIds: [...widget.event.registeredVolunteerIds, widget.registration.volunteerId],
-              currentVolunteerCount: widget.event.currentVolunteerCount + 1,
-            );
-            await eventBox.put(localEvent.id, localEvent);
+            // Fallback: gunakan event lokal dan tambah volunteer
             print('⚠️ API sync failed, using local data');
+            final localEvent = widget.event;
+            if (!localEvent.registeredVolunteerIds.contains(widget.registration.volunteerId)) {
+              localEvent.registeredVolunteerIds.add(widget.registration.volunteerId);
+              localEvent.currentVolunteerCount++;
+            }
+            await eventBox.put(localEvent.id, localEvent);
           }
 
-          // ✅ 4. Simpan notification history
+          // ✅ PERBAIKAN #4: Simpan notification history
           final notification = NotificationModel(
             id: 'notif_${DateTime.now().millisecondsSinceEpoch}',
             userId: widget.registration.volunteerId,
@@ -127,7 +135,7 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
           await notificationBox.put(notification.id, notification);
           print('✅ Notification saved to history');
 
-          // ✅ 5. Show local notification
+          // ✅ PERBAIKAN #5: Show local notification
           try {
             await _notificationService.showPaymentSuccessNotification(
               eventTitle: widget.event.title,
@@ -217,7 +225,11 @@ class _ConfirmPaymentPageState extends State<ConfirmPaymentPage> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
+                onPressed: () {
+                  // ✅ PERBAIKAN #6: Return true untuk signal pembayaran sukses
+                  Navigator.pop(context); // Close dialog
+                  Navigator.pop(context, true); // Return true ke PaymentPage
+                },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue[600],
                   foregroundColor: Colors.white,

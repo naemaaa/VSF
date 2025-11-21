@@ -20,9 +20,6 @@ class ActivityDetailPage extends StatefulWidget {
     required this.event,
     required this.currentUser,
   });
-  DateTime _convertUTCToLocal(DateTime utcTime, int offsetHours) {
-    return utcTime.add(Duration(hours: offsetHours));
-  }
 
   @override
   State<ActivityDetailPage> createState() => _ActivityDetailPageState();
@@ -38,23 +35,86 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
   String? _currentUserProvince;
   bool _locationLoading = false;
 
-  // ✅ PERBAIKAN #2B: Track event lokal untuk UI updates
   late EventModel _localEvent;
+  late bool _isUserRegistered;
+  
+  // ✅ PERBAIKAN #1: Tambah variable untuk organizer image
+  UserModel? _organizerUser;
+  bool _loadingOrganizerImage = true;
 
   @override
   void initState() {
     super.initState();
-    _localEvent = widget.event; // Copy event dari widget
+    _localEvent = widget.event;
+    _refreshRegistrationStatus();
     _setCurrentUserProvince();
     _requestUserLocation();
+    _loadOrganizerImage(); 
+     _selectedTimezone = 'WIB';
+    print('🕐 Detail Page Loaded:');
+    print('   Event Start (UTC): ${_localEvent.eventStartTime}');
+    print('   Converted to WIB: ${_getConvertedTime(_localEvent)}');
   }
 
   @override
   void didUpdateWidget(ActivityDetailPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // ✅ Refresh jika event dari widget berubah
     if (oldWidget.event.id != widget.event.id) {
-      setState(() => _localEvent = widget.event);
+      setState(() {
+        _localEvent = widget.event;
+        _refreshRegistrationStatus();
+        _loadOrganizerImage(); // ✅ PERBAIKAN: Reload saat event berubah
+      });
+    }
+  }
+
+  // ✅ PERBAIKAN #2: Method untuk load organizer image dari Hive
+  void _loadOrganizerImage() async {
+    setState(() => _loadingOrganizerImage = true);
+    
+    try {
+      final userBox = Hive.box<UserModel>('users');
+      
+      // Cari user organizer berdasarkan ID
+      UserModel? organizer;
+      for (var user in userBox.values) {
+        if (user.id == _localEvent.organizerId) {
+          organizer = user;
+          break;
+        }
+      }
+      
+      if (organizer != null) {
+        print('✅ Organizer found: ${organizer.displayName}');
+        print('   Profile image: ${organizer.profileImagePath}');
+        
+        setState(() {
+          _organizerUser = organizer;
+          _loadingOrganizerImage = false;
+        });
+      } else {
+        print('⚠️ Organizer not found in Hive');
+        setState(() => _loadingOrganizerImage = false);
+      }
+    } catch (e) {
+      print('❌ Error loading organizer: $e');
+      setState(() => _loadingOrganizerImage = false);
+    }
+  }
+
+  void _refreshRegistrationStatus() {
+    final eventBox = Hive.box<EventModel>('events');
+    final latestEvent = eventBox.get(_localEvent.id);
+    
+    if (latestEvent != null) {
+      _isUserRegistered = latestEvent.isUserRegistered(widget.currentUser.id);
+      if (mounted) {
+        setState(() {
+          _localEvent = latestEvent;
+        });
+      }
+    } else {
+      _isUserRegistered = _localEvent.isUserRegistered(widget.currentUser.id);
     }
   }
 
@@ -70,16 +130,13 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
     setState(() => _locationLoading = true);
     
     try {
-      // Check permission
       LocationPermission permission = await Geolocator.checkPermission();
       
       if (permission == LocationPermission.denied) {
-        print('📍 Location permission denied, requesting...');
         permission = await Geolocator.requestPermission();
       }
       
       if (permission == LocationPermission.deniedForever) {
-        print('❌ Location permission denied forever');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -92,15 +149,10 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
       }
       
       if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
-        print('✅ Location permission granted');
-        
-        // Get current position
         final position = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high,
           timeLimit: const Duration(seconds: 10),
         );
-        
-        print('📍 Got user location: ${position.latitude}, ${position.longitude}');
         
         if (mounted) {
           setState(() {
@@ -241,84 +293,10 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          // Organizer Avatar/Logo
-                          Container(
-                            width: 50,
-                            height: 50,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.orange[100],
-                              border: Border.all(color: Colors.orange[300]!, width: 2),
-                            ),
-                            child: ClipOval(
-                              child: _localEvent.organizerImageUrl != null && 
-                                      _localEvent.organizerImageUrl!.isNotEmpty
-                                  ? _localEvent.organizerImageUrl!.startsWith('http')
-                                      ? Image.network(
-                                          _localEvent.organizerImageUrl!,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (context, error, stackTrace) {
-                                            return Container(
-                                              color: Colors.orange[100],
-                                              child: Icon(
-                                                Icons.business,
-                                                color: Colors.orange[600],
-                                                size: 24,
-                                              ),
-                                            );
-                                          },
-                                        )
-                                      : Image.file(
-                                          File(_localEvent.organizerImageUrl!),
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (context, error, stackTrace) {
-                                            return Container(
-                                              color: Colors.orange[100],
-                                              child: Icon(
-                                                Icons.business,
-                                                color: Colors.orange[600],
-                                                size: 24,
-                                              ),
-                                            );
-                                          },
-                                        )
-                                  : Container(
-                                      color: Colors.orange[100],
-                                      child: Icon(
-                                        Icons.business,
-                                        color: Colors.orange[600],
-                                        size: 24,
-                                      ),
-                                    ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Penyelenggara',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                                Text(
-                                  _localEvent.organizerName,
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.black87,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+                      
+                      // ✅ PERBAIKAN #3: Organizer card dengan gambar
+                      _buildOrganizerCard(),
+                      
                       const SizedBox(height: 24),
                       const Text(
                         'Deskripsi Kegiatan',
@@ -583,6 +561,186 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
     );
   }
 
+  // ✅ PERBAIKAN #4: Widget untuk menampilkan organizer dengan gambar
+  Widget _buildOrganizerCard() {
+    if (_loadingOrganizerImage) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.grey[100],
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.grey[300],
+              ),
+              child: const Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Penyelenggara',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Container(
+                    width: 120,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.orange[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange[100]!),
+      ),
+      child: Row(
+        children: [
+          // ✅ PERBAIKAN #5: Tampilkan gambar organizer atau avatar
+          Container(
+            width: 50,
+            height: 50,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.orange[200],
+              border: Border.all(color: Colors.orange[400]!, width: 2),
+            ),
+            child: ClipOval(
+              child: _organizerUser != null && 
+                  _organizerUser!.profileImagePath != null &&
+                  _organizerUser!.profileImagePath!.isNotEmpty
+                  ? _buildOrganizerImage()
+                  : _buildOrganizerInitials(),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Penyelenggara',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _localEvent.organizerName,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ✅ PERBAIKAN #6: Widget untuk menampilkan gambar organizer
+  Widget _buildOrganizerImage() {
+    final imagePath = _organizerUser!.profileImagePath;
+    
+    if (imagePath == null || imagePath.isEmpty) {
+      return _buildOrganizerInitials();
+    }
+
+    // Jika URL remote
+    if (imagePath.startsWith('http')) {
+      return Image.network(
+        imagePath,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return _buildOrganizerInitials();
+        },
+      );
+    }
+
+    // Jika file lokal
+    try {
+      final file = File(imagePath);
+      if (file.existsSync()) {
+        return Image.file(
+          file,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return _buildOrganizerInitials();
+          },
+        );
+      }
+    } catch (e) {
+      print('Error loading image: $e');
+    }
+
+    return _buildOrganizerInitials();
+  }
+
+  // ✅ PERBAIKAN #7: Widget untuk initials jika tidak ada gambar
+  Widget _buildOrganizerInitials() {
+    String initials = 'O'; // Default
+    
+    if (_organizerUser != null) {
+      initials = _organizerUser!.initials;
+    } else if (_localEvent.organizerName.isNotEmpty) {
+      final parts = _localEvent.organizerName.split(' ');
+      if (parts.length >= 2) {
+        initials = '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+      } else if (parts.isNotEmpty) {
+        initials = parts[0].substring(0, 1).toUpperCase();
+      }
+    }
+
+    return Container(
+      color: Colors.orange[200],
+      child: Center(
+        child: Text(
+          initials,
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Colors.orange[800],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildBottomActions() {
     if (widget.event.organizerId == widget.currentUser.id) {
       return Row(
@@ -629,9 +787,7 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
       );
     }
 
-    // ✅ PERBAIKAN #2B: Gunakan _localEvent untuk cek registration
-    final isRegistered = _localEvent.isUserRegistered(widget.currentUser.id);
-    if (isRegistered) {
+    if (_isUserRegistered) {
       if (_localEvent.isPast) {
         return SizedBox(
           width: double.infinity,
@@ -648,7 +804,7 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
           ),
         );
       }
-      // ✅ PERBAIKAN: Sudah daftar, tampilkan BATALKAN
+
       return Row(
         children: [
           Expanded(
@@ -698,19 +854,11 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
                   ),
                 ).then((result) {
                   if (result == true) {
-                    print('🔄 Returning from register/payment, refreshing event...');
+                    Future.delayed(const Duration(milliseconds: 500), () {
                       if (mounted) {
-                        final eventBox = Hive.box<EventModel>('events');
-                        final updatedEvent = eventBox.get(widget.event.id);
-                        if (updatedEvent != null) {
-                          setState(() {
-                            _localEvent = updatedEvent;
-                            print('✅ Event refreshed from Hive');
-                            print('   Registered users: ${_localEvent.registeredVolunteerIds}');
-                            print('   Is user registered: ${_localEvent.isUserRegistered(widget.currentUser.id)}');
-                          });
-                        }
+                        _refreshRegistrationStatus();
                       }
+                    });
                   }
                 });
               },
@@ -760,10 +908,12 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
     try {
       final regBox = Hive.box<VolunteerRegistration>('registrations');
       final eventBox = Hive.box<EventModel>('events');
+      
       final regEntry = regBox.values.firstWhere(
         (r) => r.eventId == _localEvent.id && r.volunteerId == widget.currentUser.id,
         orElse: () => throw Exception('Registration not found'),
       );
+      
       dynamic foundKey;
       for (final k in regBox.keys) {
         final v = regBox.get(k);
@@ -772,6 +922,7 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
           break;
         }
       }
+      
       if (foundKey != null) await regBox.delete(foundKey);
       
       final event = eventBox.get(_localEvent.id) ?? _localEvent;
@@ -779,11 +930,18 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
       await eventBox.put(event.id, event);
       
       if (mounted) {
-        setState(() => _localEvent = event);
+        setState(() {
+          _localEvent = event;
+          _isUserRegistered = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pendaftaran berhasil dibatalkan')));
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal membatalkan pendaftaran')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Gagal membatalkan pendaftaran')),
+        );
+      }
     }
   }
 
@@ -853,14 +1011,12 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
     }
   }
 
-  // ✅ PERBAIKAN #1: Fungsi konversi UTC ke Local timezone
-DateTime _convertUTCToLocal(DateTime utcTime, int offsetHours) {
+  DateTime _convertUTCToLocal(DateTime utcTime, int offsetHours) {
   return utcTime.add(Duration(hours: offsetHours));
-}
-
+  }
 
   String _getConvertedTime(EventModel event) {
-  int offsetHours = 0;
+    int offsetHours = 0;
   switch (_selectedTimezone) {
     case 'WIB':
       offsetHours = 7;
@@ -872,16 +1028,15 @@ DateTime _convertUTCToLocal(DateTime utcTime, int offsetHours) {
       offsetHours = 9;
       break;
     case 'London':
-      offsetHours = 0; 
+      offsetHours = 0;
       break;
   }
-  
-  // ✅ GANTI KE SINI (perbaikan):
-    final startLocal = _convertUTCToLocal(event.eventStartTime, offsetHours);
-    final endLocal = _convertUTCToLocal(event.eventEndTime, offsetHours);
-    final formatter = DateFormat('HH:mm');
-    return '${formatter.format(startLocal)} - ${formatter.format(endLocal)}';
-    }
+
+  final startLocal = _convertUTCToLocal(event.eventStartTime, offsetHours);
+  final endLocal = _convertUTCToLocal(event.eventEndTime, offsetHours);
+  final formatter = DateFormat('HH:mm');
+  return '${formatter.format(startLocal)} - ${formatter.format(endLocal)}';
+}
 
   Widget _buildCurrencyCard(String currency, String amount, Color color) {
     return Container(
@@ -934,8 +1089,6 @@ DateTime _convertUTCToLocal(DateTime utcTime, int offsetHours) {
       final lng = _localEvent.location.longitude;
       
       final googleMapsUrl = 'https://www.google.com/maps/search/?api=1&query=$lat,$lng';
-      
-      print('🗺️ Opening Google Maps: $googleMapsUrl');
       
       final uri = Uri.parse(googleMapsUrl);
       
