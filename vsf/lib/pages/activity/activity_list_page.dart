@@ -120,14 +120,14 @@ class _ActivityListPageState extends State<ActivityListPage> {
   }
 
   void _filterEvents() {
-    final query = _searchController.text.toLowerCase();
+    final query = _searchController.text.toUpperCase();
     setState(() {
       _filteredEvents = _allEvents.where((event) {
         // Filter by search query
         final matchesQuery = query.isEmpty ||
-            event.title.toLowerCase().contains(query) ||
-            event.description.toLowerCase().contains(query) ||
-            event.location.city.toLowerCase().contains(query);
+            event.title.toUpperCase().contains(query) ||
+            event.description.toUpperCase().contains(query) ||
+            event.location.city.toUpperCase().contains(query);
 
         // Filter by category
         final matchesCategory = _selectedCategory == 'Semua' ||

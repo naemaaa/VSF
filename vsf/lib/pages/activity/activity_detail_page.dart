@@ -8,6 +8,7 @@ import '../../models/event_model.dart';
 import '../../models/user_model.dart';
 import '../../models/volunteer_registration.dart';
 import '../../widgets/event_map_viewer.dart';
+import '../../services/timezone_service.dart'; 
 import '../volunteer/register_volunteer_page.dart';
 import 'event_participants_page.dart';
 
@@ -28,7 +29,7 @@ class ActivityDetailPage extends StatefulWidget {
 class _ActivityDetailPageState extends State<ActivityDetailPage> {
   final double _usdRate = 15800.0;
   final double _eurRate = 17200.0;
-  String _selectedTimezone = 'WIB';
+  String _selectedTimezone = 'WIB'; // ✅ ADD THIS
   
   String? _currentUserLat;
   String? _currentUserLng;
@@ -38,7 +39,6 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
   late EventModel _localEvent;
   late bool _isUserRegistered;
   
-  // ✅ PERBAIKAN #1: Tambah variable untuk organizer image
   UserModel? _organizerUser;
   bool _loadingOrganizerImage = true;
 
@@ -49,11 +49,19 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
     _refreshRegistrationStatus();
     _setCurrentUserProvince();
     _requestUserLocation();
-    _loadOrganizerImage(); 
-     _selectedTimezone = 'WIB';
-    print('🕐 Detail Page Loaded:');
-    print('   Event Start (UTC): ${_localEvent.eventStartTime}');
-    print('   Converted to WIB: ${_getConvertedTime(_localEvent)}');
+    _loadOrganizerImage();
+    _selectedTimezone = 'WIB';
+    
+    // ✅ ADD THIS: Debug timezone info
+    print('═══════════════════════════════════════');
+    print('🎯 Activity Detail Page Opened');
+    print('═══════════════════════════════════════');
+    TimezoneHelper.debugPrintTimezoneInfo();
+    
+    print('📍 Event Time Info:');
+    print('   Stored (UTC): ${_localEvent.eventStartTime}');
+    print('   Display (WIB): ${TimezoneHelper.utcToLocalWIB(_localEvent.eventStartTime)}');
+    print('═══════════════════════════════════════\n');
   }
 
   @override
@@ -63,19 +71,17 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
       setState(() {
         _localEvent = widget.event;
         _refreshRegistrationStatus();
-        _loadOrganizerImage(); // ✅ PERBAIKAN: Reload saat event berubah
+        _loadOrganizerImage();
       });
     }
   }
 
-  // ✅ PERBAIKAN #2: Method untuk load organizer image dari Hive
   void _loadOrganizerImage() async {
     setState(() => _loadingOrganizerImage = true);
     
     try {
       final userBox = Hive.box<UserModel>('users');
       
-      // Cari user organizer berdasarkan ID
       UserModel? organizer;
       for (var user in userBox.values) {
         if (user.id == _localEvent.organizerId) {
@@ -168,6 +174,68 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
     if (mounted) {
       setState(() => _locationLoading = false);
     }
+  }
+
+  // ✅ NEW METHOD: Convert UTC to selected timezone
+  String _getConvertedTime(EventModel event) {
+    // Event.eventStartTime sudah dalam UTC (dari database)
+    final startTimeInTargetTZ = TimezoneHelper.convertUTCToTimezone(
+      event.eventStartTime,
+      _selectedTimezone,
+    );
+    final endTimeInTargetTZ = TimezoneHelper.convertUTCToTimezone(
+      event.eventEndTime,
+      _selectedTimezone,
+    );
+
+    final formatter = DateFormat('HH:mm');
+    final startStr = formatter.format(startTimeInTargetTZ);
+    final endStr = formatter.format(endTimeInTargetTZ);
+    
+    print('🕐 Time conversion:');
+    print('   Selected timezone: $_selectedTimezone');
+    print('   Start (UTC): ${event.eventStartTime}');
+    print('   Start ($_selectedTimezone): $startTimeInTargetTZ');
+    print('   Time range: $startStr - $endStr');
+    
+    return '$startStr - $endStr';
+  }
+
+  // ✅ NEW METHOD: Build timezone chip
+  Widget _buildTimezoneChip(String timezone) {
+    final isSelected = _selectedTimezone == timezone;
+    return GestureDetector(
+      onTap: () {
+        setState(() => _selectedTimezone = timezone);
+        print('🌍 Timezone changed to: $timezone');
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.blue[600] : Colors.grey[200],
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          timezone,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: isSelected ? Colors.white : Colors.black54,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ✅ NEW METHOD: Get timezone offset
+  int _getTimezoneOffset(String timezone) {
+    final offsets = {
+      'WIB': 7,
+      'WITA': 8,
+      'WIT': 9,
+      'London': 0,
+    };
+    return offsets[timezone] ?? 7;
   }
 
   @override
@@ -294,7 +362,6 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
                       ),
                       const SizedBox(height: 16),
                       
-                      // ✅ PERBAIKAN #3: Organizer card dengan gambar
                       _buildOrganizerCard(),
                       
                       const SizedBox(height: 24),
@@ -325,18 +392,27 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          _buildTimezoneChip('WIB'),
-                          const SizedBox(width: 8),
-                          _buildTimezoneChip('WITA'),
-                          const SizedBox(width: 8),
-                          _buildTimezoneChip('WIT'),
-                          const SizedBox(width: 8),
-                          _buildTimezoneChip('London'),
-                        ],
+                      
+                      // ✅ TIMEZONE SELECTOR
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            _buildTimezoneChip('WIB'),
+                            const SizedBox(width: 8),
+                            _buildTimezoneChip('WITA'),
+                            const SizedBox(width: 8),
+                            _buildTimezoneChip('WIT'),
+                            const SizedBox(width: 8),
+                            _buildTimezoneChip('London'),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 12),
+                      
+                  
+                      
+                      // ✅ TIME DISPLAY
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
@@ -561,7 +637,6 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
     );
   }
 
-  // ✅ PERBAIKAN #4: Widget untuk menampilkan organizer dengan gambar
   Widget _buildOrganizerCard() {
     if (_loadingOrganizerImage) {
       return Container(
@@ -625,7 +700,6 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
       ),
       child: Row(
         children: [
-          // ✅ PERBAIKAN #5: Tampilkan gambar organizer atau avatar
           Container(
             width: 50,
             height: 50,
@@ -673,7 +747,6 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
     );
   }
 
-  // ✅ PERBAIKAN #6: Widget untuk menampilkan gambar organizer
   Widget _buildOrganizerImage() {
     final imagePath = _organizerUser!.profileImagePath;
     
@@ -681,7 +754,6 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
       return _buildOrganizerInitials();
     }
 
-    // Jika URL remote
     if (imagePath.startsWith('http')) {
       return Image.network(
         imagePath,
@@ -692,7 +764,6 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
       );
     }
 
-    // Jika file lokal
     try {
       final file = File(imagePath);
       if (file.existsSync()) {
@@ -711,9 +782,8 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
     return _buildOrganizerInitials();
   }
 
-  // ✅ PERBAIKAN #7: Widget untuk initials jika tidak ada gambar
   Widget _buildOrganizerInitials() {
-    String initials = 'O'; // Default
+    String initials = 'O';
     
     if (_organizerUser != null) {
       initials = _organizerUser!.initials;
@@ -945,99 +1015,6 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
     }
   }
 
-  Widget _buildTimezoneChip(String timezone) {
-    final isSelected = _selectedTimezone == timezone;
-    return GestureDetector(
-      onTap: () {
-        setState(() => _selectedTimezone = timezone);
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: isSelected ? Colors.blue[600] : Colors.grey[200],
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          timezone,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            color: isSelected ? Colors.white : Colors.black54,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeaderImage() {
-    final url = widget.event.imageUrl;
-    if (url == null || url.isEmpty) {
-      return Container(
-        color: Colors.grey[200],
-        child: const Icon(Icons.image, size: 80),
-      );
-    }
-
-    if (url.startsWith('http')) {
-      return Image.network(
-        url,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) {
-          return Container(
-            color: Colors.grey[200],
-            child: const Icon(Icons.image, size: 80),
-          );
-        },
-      );
-    }
-
-    try {
-      final file = File(url);
-      return Image.file(
-        file,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) {
-          return Container(
-            color: Colors.grey[200],
-            child: const Icon(Icons.image, size: 80),
-          );
-        },
-      );
-    } catch (_) {
-      return Container(
-        color: Colors.grey[200],
-        child: const Icon(Icons.image, size: 80),
-      );
-    }
-  }
-
-  DateTime _convertUTCToLocal(DateTime utcTime, int offsetHours) {
-  return utcTime.add(Duration(hours: offsetHours));
-  }
-
-  String _getConvertedTime(EventModel event) {
-    int offsetHours = 0;
-  switch (_selectedTimezone) {
-    case 'WIB':
-      offsetHours = 7;
-      break;
-    case 'WITA':
-      offsetHours = 8;
-      break;
-    case 'WIT':
-      offsetHours = 9;
-      break;
-    case 'London':
-      offsetHours = 0;
-      break;
-  }
-
-  final startLocal = _convertUTCToLocal(event.eventStartTime, offsetHours);
-  final endLocal = _convertUTCToLocal(event.eventEndTime, offsetHours);
-  final formatter = DateFormat('HH:mm');
-  return '${formatter.format(startLocal)} - ${formatter.format(endLocal)}';
-}
-
   Widget _buildCurrencyCard(String currency, String amount, Color color) {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -1074,7 +1051,7 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
   String _convertToUSD() {
     if (_localEvent.isFree) return 'Free';
     final usd = _localEvent.participationFeeIdr / _usdRate;
-    return '\$${usd.toStringAsFixed(2)}';
+    return '\${usd.toStringAsFixed(2)}';
   }
 
   String _convertToEUR() {
@@ -1123,6 +1100,48 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
           SnackBar(content: Text('Error: $e')),
         );
       }
+    }
+  }
+
+  Widget _buildHeaderImage() {
+    final url = widget.event.imageUrl;
+    if (url == null || url.isEmpty) {
+      return Container(
+        color: Colors.grey[200],
+        child: const Icon(Icons.image, size: 80),
+      );
+    }
+
+    if (url.startsWith('http')) {
+      return Image.network(
+        url,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            color: Colors.grey[200],
+            child: const Icon(Icons.image, size: 80),
+          );
+        },
+      );
+    }
+
+    try {
+      final file = File(url);
+      return Image.file(
+        file,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            color: Colors.grey[200],
+            child: const Icon(Icons.image, size: 80),
+          );
+        },
+      );
+    } catch (_) {
+      return Container(
+        color: Colors.grey[200],
+        child: const Icon(Icons.image, size: 80),
+      );
     }
   }
 }
