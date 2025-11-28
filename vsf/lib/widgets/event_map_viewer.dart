@@ -41,6 +41,7 @@ class _EventMapViewerState extends State<EventMapViewer> {
   late MapController _mapController;
   double? _distanceToEvent;
   final LocationService _locationService = LocationService();
+  bool _isFocusedOnEvent = false;
   
   static const String MAPBOX_ACCESS_TOKEN = 'REDACTED_MAPBOX_TOKEN';
 
@@ -62,13 +63,13 @@ class _EventMapViewerState extends State<EventMapViewer> {
     super.didUpdateWidget(oldWidget);
     
     if (oldWidget.currentUserProvince != widget.currentUserProvince && 
-        widget.currentUserProvince != null) {
+        widget.currentUserProvince != null && 
+        !_isFocusedOnEvent) {
       Future.delayed(const Duration(milliseconds: 300), () {
         _moveToProvince(widget.currentUserProvince!);
       });
     }
     
-    // Recalculate jarak saat user location berubah
     if (oldWidget.currentUserLat != widget.currentUserLat || 
         oldWidget.currentUserLng != widget.currentUserLng) {
       print('📍 User location updated, recalculating distance...');
@@ -80,6 +81,30 @@ class _EventMapViewerState extends State<EventMapViewer> {
     final center = PROVINCE_CENTER[province];
     if (center != null) {
       _mapController.move(center, 10.0);
+    }
+  }
+
+  // ✅ PERBAIKAN: Fokus ke event location dengan zoom optimal
+  void _focusOnEventLocation() {
+    final eventLocation = LatLng(
+      widget.event.location.latitude,
+      widget.event.location.longitude,
+    );
+    
+    // Zoom level 16 untuk fokus detail ke lokasi event
+    _mapController.move(eventLocation, 16.0);
+    
+    setState(() => _isFocusedOnEvent = true);
+    
+    print('🎯 Focused on event location: ${widget.event.title}');
+    print('   Lat: ${widget.event.location.latitude}, Lng: ${widget.event.location.longitude}');
+  }
+
+  // ✅ PERBAIKAN: Reset ke province view
+  void _resetToProvinceView() {
+    if (widget.currentUserProvince != null) {
+      _moveToProvince(widget.currentUserProvince!);
+      setState(() => _isFocusedOnEvent = false);
     }
   }
 
@@ -107,14 +132,12 @@ class _EventMapViewerState extends State<EventMapViewer> {
       }
     } else {
       print('⚠️ User location not available');
-      print('   currentUserLat: ${widget.currentUserLat}');
-      print('   currentUserLng: ${widget.currentUserLng}');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Event marker (blue)
+    // Event marker (blue - pusat)
     final eventMarker = Marker(
       point: LatLng(
         widget.event.location.latitude,
@@ -122,27 +145,31 @@ class _EventMapViewerState extends State<EventMapViewer> {
       ),
       width: 40,
       height: 40,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.blue,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.3),
-              blurRadius: 8,
-            ),
-          ],
-        ),
-        child: const Icon(
-          Icons.location_on,
-          color: Colors.white,
-          size: 22,
+      child: GestureDetector(
+        onTap: _focusOnEventLocation,
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.blue,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 8,
+              ),
+            ],
+          ),
+          child: const Icon(
+            Icons.location_on,
+            color: Colors.white,
+            size: 22,
+          ),
         ),
       ),
     );
 
     final markerList = <Marker>[eventMarker];
     
+    // User location marker (hijau - jika ada)
     if (widget.currentUserLat != null && widget.currentUserLng != null) {
       try {
         markerList.add(
@@ -185,7 +212,7 @@ class _EventMapViewerState extends State<EventMapViewer> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Map Container (TANPA SEARCH - hanya tampil)
+        // Map Container
         Container(
           height: 250,
           decoration: BoxDecoration(
@@ -194,18 +221,115 @@ class _EventMapViewerState extends State<EventMapViewer> {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: FlutterMap(
-              mapController: _mapController,
-              options: MapOptions(
-                initialCenter: defaultCenter,
-                initialZoom: 13,
-              ),
+            child: Stack(
               children: [
-                TileLayer(
-                  urlTemplate: 'https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}@2x.png?access_token=$MAPBOX_ACCESS_TOKEN',
-                  userAgentPackageName: 'com.example.vsf',
+                FlutterMap(
+                  mapController: _mapController,
+                  options: MapOptions(
+                    initialCenter: defaultCenter,
+                    initialZoom: 13,
+                  ),
+                  children: [
+                    TileLayer(
+                      urlTemplate: 'https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}@2x.png?access_token=$MAPBOX_ACCESS_TOKEN',
+                      userAgentPackageName: 'com.example.vsf',
+                    ),
+                    MarkerLayer(markers: markerList),
+                  ],
                 ),
-                MarkerLayer(markers: markerList),
+                
+                // ✅ PERBAIKAN: Floating action button untuk zoom ke event
+                Positioned(
+                  bottom: 12,
+                  right: 12,
+                  child: Column(
+                    children: [
+                      // Zoom to Event Button
+                      FloatingActionButton.small(
+                        heroTag: 'focus_event_${widget.event.id}',
+                        onPressed: _focusOnEventLocation,
+                        backgroundColor: Colors.blue[600],
+                        tooltip: 'Fokus ke Lokasi Event',
+                        child: const Icon(
+                          Icons.my_location,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      
+                      // Reset View Button
+                      if (_isFocusedOnEvent)
+                        FloatingActionButton.small(
+                          heroTag: 'reset_view_${widget.event.id}',
+                          onPressed: _resetToProvinceView,
+                          backgroundColor: Colors.grey[600],
+                          tooltip: 'Reset View',
+                          child: const Icon(
+                            Icons.zoom_out_map,
+                            color: Colors.white,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                
+                // Info Box saat fokus ke event
+                if (_isFocusedOnEvent)
+                  Positioned(
+                    top: 12,
+                    left: 12,
+                    right: 12,
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[600],
+                        borderRadius: BorderRadius.circular(8),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 8,
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.location_on,
+                            color: Colors.white,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '📍 ${widget.event.title}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  widget.event.location.fullAddress,
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 10,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -259,7 +383,7 @@ class _EventMapViewerState extends State<EventMapViewer> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Jarak akan muncul saat volunteer membuka event',
+                    'Klik 📍 di peta untuk fokus ke lokasi event',
                     style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                   ),
                 ),

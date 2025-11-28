@@ -1051,7 +1051,7 @@ class _ActivityDetailPageState extends State<ActivityDetailPage> {
   String _convertToUSD() {
     if (_localEvent.isFree) return 'Free';
     final usd = _localEvent.participationFeeIdr / _usdRate;
-    return '\${usd.toStringAsFixed(2)}';
+    return '\$${usd.toStringAsFixed(2)}';
   }
 
   String _convertToEUR() {

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:hive/hive.dart';
+import 'package:geolocator/geolocator.dart';
 import '../../models/event_model.dart';
 import '../../models/user_model.dart';
+import '../../services/location_service.dart';
 import 'activity_detail_page.dart';
 
 class ActivityListPage extends StatefulWidget {
@@ -14,12 +16,21 @@ class ActivityListPage extends StatefulWidget {
   State<ActivityListPage> createState() => _ActivityListPageState();
 }
 
+
+
 class _ActivityListPageState extends State<ActivityListPage> {
   final _searchController = TextEditingController();
   List<EventModel> _allEvents = [];
   List<EventModel> _filteredEvents = [];
   String _selectedCategory = 'Semua';
   String _selectedLocation = 'Semua';
+  String _selectedDistance = 'Semua';
+  
+  double? _userLat;
+  double? _userLng;
+  bool _loadingLocation = false;
+  
+  final LocationService _locationService = LocationService();
   final String _selectedCurrency = 'IDR';  
 
   final Map<String, double> _exchangeRates = {  
@@ -72,37 +83,16 @@ class _ActivityListPageState extends State<ActivityListPage> {
     'Yogyakarta',
     'Bengkulu',
     'Kepulauan Riau',
-
   ];
 
-  double _convertPrice(int priceIDR, String toCurrency) {
-  if (toCurrency == 'IDR') return priceIDR.toDouble();
-  final rate = _exchangeRates[toCurrency] ?? 1.0;
-  return priceIDR / rate;
-  }
-
-  String _formatCurrency(double amount, String currency) {
-    switch (currency) {
-      case 'IDR':
-        return 'Rp ${amount.toStringAsFixed(0).replaceAllMapped(
-          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-          (Match m) => '${m[1]}.',
-        )}';
-      case 'USD':
-        return '\$${amount.toStringAsFixed(2)}';
-      case 'EUR':
-        return '€${amount.toStringAsFixed(2)}';
-      default:
-        return amount.toStringAsFixed(2);
-    }
-  }
-
+  final List<String> _distanceOptions = ['Semua', 'Terdekat', 'Terjauh'];
 
   @override
   void initState() {
     super.initState();
     _loadEvents();
     _searchController.addListener(_filterEvents);
+    _getUserLocation();
   }
 
   @override
@@ -111,169 +101,322 @@ class _ActivityListPageState extends State<ActivityListPage> {
     super.dispose();
   }
 
+  Future<void> _getUserLocation() async {
+    setState(() => _loadingLocation = true);
+    
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 10),
+      );
+      
+      if (mounted) {
+        setState(() {
+          _userLat = position.latitude;
+          _userLng = position.longitude;
+          print('📍 User location: $_userLat, $_userLng');
+        });
+        _filterEvents();
+      }
+    } catch (e) {
+      print('⚠️ Error getting location: $e');
+    }
+    
+    if (mounted) {
+      setState(() => _loadingLocation = false);
+    }
+  }
+
   void _loadEvents() {
     final eventBox = Hive.box<EventModel>('events');
     setState(() {
-      _allEvents = eventBox.values.toList();
-      _filteredEvents = _allEvents;
+      // ✅ PERBAIKAN: Ambil SEMUA event (termasuk yang isPast)
+      _allEvents = eventBox.values
+          .where((event) => event.isActive)
+          .toList();
+      _filterEvents();
     });
   }
 
   void _filterEvents() {
-    final query = _searchController.text.toUpperCase();
+    final query = _searchController.text.toLowerCase();
+    
+    var filtered = _allEvents.where((event) {
+      // Filter by search query
+      final matchesQuery = query.isEmpty ||
+          event.title.toLowerCase().contains(query) ||
+          event.description.toLowerCase().contains(query) ||
+          event.location.city.toLowerCase().contains(query);
+
+      // Filter by category
+      final matchesCategory = _selectedCategory == 'Semua' ||
+          event.category == _selectedCategory;
+
+      // Filter by location
+      final matchesLocation = _selectedLocation == 'Semua' ||
+          event.location.province == _selectedLocation;
+
+      return matchesQuery && matchesCategory && matchesLocation;
+    }).toList();
+
+    // ✅ PERBAIKAN: Sort dengan prioritas
+    filtered.sort((a, b) {
+      // Prioritas 1: Event yang belum selesai (isPast = false) lebih atas
+      final aIsPast = a.isPast ? 1 : 0;
+      final bIsPast = b.isPast ? 1 : 0;
+      
+      if (aIsPast != bIsPast) {
+        return aIsPast.compareTo(bIsPast);
+      }
+      
+      // Prioritas 2 (dalam kategori yang sama): Event tidak penuh lebih atas
+      final aIsFull = a.isFull ? 1 : 0;
+      final bIsFull = b.isFull ? 1 : 0;
+      
+      if (aIsFull != bIsFull) {
+        return aIsFull.compareTo(bIsFull);
+      }
+      
+      // Prioritas 3: Urutkan berdasarkan jarak
+      if (_userLat != null && _userLng != null) {
+        final distA = _locationService.calculateDistance(
+          _userLat!,
+          _userLng!,
+          a.location.latitude,
+          a.location.longitude,
+        );
+        
+        final distB = _locationService.calculateDistance(
+          _userLat!,
+          _userLng!,
+          b.location.latitude,
+          b.location.longitude,
+        );
+        
+        if (_selectedDistance == 'Terdekat') {
+          return distA.compareTo(distB);
+        } else if (_selectedDistance == 'Terjauh') {
+          return distB.compareTo(distA);
+        }
+      }
+      
+      // Default: Urutkan berdasarkan tanggal mulai
+      return a.eventStartTime.compareTo(b.eventStartTime);
+    });
+
     setState(() {
-      _filteredEvents = _allEvents.where((event) {
-        // Filter by search query
-        final matchesQuery = query.isEmpty ||
-            event.title.toUpperCase().contains(query) ||
-            event.description.toUpperCase().contains(query) ||
-            event.location.city.toUpperCase().contains(query);
-
-        // Filter by category
-        final matchesCategory = _selectedCategory == 'Semua' ||
-            event.category == _selectedCategory;
-
-        // Filter by location
-        final matchesLocation = _selectedLocation == 'Semua' ||
-            event.location.province == _selectedLocation;
-
-        return matchesQuery && matchesCategory && matchesLocation;
-      }).toList();
+      _filteredEvents = filtered;
     });
   }
 
   void _showFilterBottomSheet() {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Filter Kegiatan',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+        builder: (context, setModalState) => DraggableScrollableSheet(
+          expand: false,
+          maxChildSize: 0.9,
+          initialChildSize: 0.7,
+          builder: (context, scrollController) => Padding(
+            padding: const EdgeInsets.all(24),
+            child: ListView(
+              controller: scrollController,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Filter Kegiatan',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _selectedCategory = 'Semua';
+                          _selectedLocation = 'Semua';
+                          _selectedDistance = 'Semua';
+                        });
+                        setModalState(() {});
+                        _filterEvents();
+                        Navigator.pop(context);
+                      },
+                      child: const Text('Reset'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+
+                // ✅ PERBAIKAN: Filter Jarak
+                const Text(
+                  'Urutkan Berdasarkan Jarak',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (_userLat != null && _userLng != null)
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _distanceOptions.map((distance) {
+                      final isSelected = _selectedDistance == distance;
+                      return FilterChip(
+                        label: Text(distance),
+                        selected: isSelected,
+                        onSelected: (selected) {
+                          setState(() {
+                            _selectedDistance = distance;
+                          });
+                          setModalState(() {});
+                          _filterEvents();
+                        },
+                        backgroundColor: Colors.grey[100],
+                        selectedColor: Colors.blue[100],
+                        checkmarkColor: Colors.blue[600],
+                      );
+                    }).toList(),
+                  )
+                else
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange[200]!),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.location_off, color: Colors.orange[600], size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Aktifkan lokasi untuk filter berdasarkan jarak',
+                            style: TextStyle(fontSize: 12, color: Colors.orange[700]),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  TextButton(
-                    onPressed: () {
-                      setState(() {
-                        _selectedCategory = 'Semua';
-                        _selectedLocation = 'Semua';
-                      });
-                      setModalState(() {});
-                      _filterEvents();
-                    },
-                    child: const Text('Reset'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
+                const SizedBox(height: 24),
 
-              // Kategori Filter
-              const Text(
-                'Kategori',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _categories.map((category) {
-                  final isSelected = _selectedCategory == category;
-                  return FilterChip(
-                    label: Text(category),
-                    selected: isSelected,
-                    onSelected: (selected) {
-                      setState(() {
-                        _selectedCategory = category;
-                      });
-                      setModalState(() {});
-                      _filterEvents();
-                    },
-                    backgroundColor: Colors.grey[100],
-                    selectedColor: Colors.blue[100],
-                    checkmarkColor: Colors.blue[600],
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 24),
-
-              // Lokasi Filter
-              const Text(
-                'Lokasi',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: _selectedLocation,
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
+                // Kategori Filter
+                const Text(
+                  'Kategori',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-                items: _locations.map((location) {
-                  return DropdownMenuItem(
-                    value: location,
-                    child: Text(location),
-                  );
-                }).toList(),
-                onChanged: (value) {
-                  if (value != null) {
-                    setState(() {
-                      _selectedLocation = value;
-                    });
-                    setModalState(() {});
-                    _filterEvents();
-                  }
-                },
-              ),
-              const SizedBox(height: 24),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _categories.map((category) {
+                    final isSelected = _selectedCategory == category;
+                    return FilterChip(
+                      label: Text(category),
+                      selected: isSelected,
+                      onSelected: (selected) {
+                        setState(() {
+                          _selectedCategory = category;
+                        });
+                        setModalState(() {});
+                        _filterEvents();
+                      },
+                      backgroundColor: Colors.grey[100],
+                      selectedColor: Colors.blue[100],
+                      checkmarkColor: Colors.blue[600],
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 24),
 
-              // Apply Button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue[600],
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
+                // Lokasi Filter
+                const Text(
+                  'Lokasi',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: _selectedLocation,
+                  decoration: InputDecoration(
+                    border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
                   ),
-                  child: const Text(
-                    'Terapkan Filter',
-                    style: TextStyle(fontWeight: FontWeight.bold),
+                  items: _locations.map((location) {
+                    return DropdownMenuItem(
+                      value: location,
+                      child: Text(location),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() {
+                        _selectedLocation = value;
+                      });
+                      setModalState(() {});
+                      _filterEvents();
+                    }
+                  },
+                ),
+                const SizedBox(height: 32),
+
+                // Apply Button
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue[600],
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'Terapkan Filter',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
+  }
+
+  String _getDistanceText(EventModel event) {
+    if (_userLat == null || _userLng == null) {
+      return '';
+    }
+    
+    final distance = _locationService.calculateDistance(
+      _userLat!,
+      _userLng!,
+      event.location.latitude,
+      event.location.longitude,
+    );
+    
+    return _locationService.formatDistance(distance);
   }
 
   @override
@@ -284,7 +427,7 @@ class _ActivityListPageState extends State<ActivityListPage> {
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text(
-          'Daftar Akt',
+          'Daftar Aktivitas',
           style: TextStyle(
             color: Colors.black87,
             fontWeight: FontWeight.bold,
@@ -340,7 +483,7 @@ class _ActivityListPageState extends State<ActivityListPage> {
           ),
 
           // Active Filters Chips
-          if (_selectedCategory != 'Semua' || _selectedLocation != 'Semua')
+          if (_selectedCategory != 'Semua' || _selectedLocation != 'Semua' || _selectedDistance != 'Semua')
             Container(
               color: Colors.white,
               padding: const EdgeInsets.only(left: 16, right: 16, bottom: 12),
@@ -363,32 +506,85 @@ class _ActivityListPageState extends State<ActivityListPage> {
                         ),
                       ),
                     if (_selectedLocation != 'Semua')
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: Chip(
+                          label: Text(_selectedLocation),
+                          deleteIcon: const Icon(Icons.close, size: 16),
+                          onDeleted: () {
+                            setState(() => _selectedLocation = 'Semua');
+                            _filterEvents();
+                          },
+                          backgroundColor: Colors.green[50],
+                          labelStyle: TextStyle(color: Colors.green[600]),
+                        ),
+                      ),
+                    if (_selectedDistance != 'Semua')
                       Chip(
-                        label: Text(_selectedLocation),
+                        label: Text(_selectedDistance),
                         deleteIcon: const Icon(Icons.close, size: 16),
                         onDeleted: () {
-                          setState(() => _selectedLocation = 'Semua');
+                          setState(() => _selectedDistance = 'Semua');
                           _filterEvents();
                         },
-                        backgroundColor: Colors.green[50],
-                        labelStyle: TextStyle(color: Colors.green[600]),
+                        backgroundColor: Colors.purple[50],
+                        labelStyle: TextStyle(color: Colors.purple[600]),
                       ),
                   ],
                 ),
               ),
             ),
 
-          // Results Count
+          // Results Count & Location Status
           Container(
             color: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             width: double.infinity,
-            child: Text(
-              '${_filteredEvents.length} kegiatan ditemukan',
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.grey[600],
-              ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '${_filteredEvents.length} kegiatan ditemukan',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                if (_loadingLocation)
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 1.5,
+                      valueColor: AlwaysStoppedAnimation(Colors.blue[400]),
+                    ),
+                  )
+                else if (_userLat != null && _userLng != null)
+                  Tooltip(
+                    message: 'Lokasi aktif',
+                    child: Row(
+                      children: [
+                        Icon(Icons.location_on, size: 12, color: Colors.green[600]),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Jarak aktif',
+                          style: TextStyle(fontSize: 11, color: Colors.green[600]),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  Row(
+                    children: [
+                      Icon(Icons.location_off, size: 12, color: Colors.grey[600]),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Jarak tidak tersedia',
+                        style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+              ],
             ),
           ),
 
@@ -433,6 +629,8 @@ class _ActivityListPageState extends State<ActivityListPage> {
   }
 
   Widget _buildEventCard(EventModel event) {
+    final distanceText = _getDistanceText(event);
+    
     return GestureDetector(
       onTap: () {
         Navigator.push(
@@ -467,7 +665,8 @@ class _ActivityListPageState extends State<ActivityListPage> {
               child: Stack(
                 children: [
                   _buildEventImage(event),
-                  // Status Badge
+                  
+                  // Status Badge (Tersedia/Penuh/Selesai)
                   Positioned(
                     top: 12,
                     right: 12,
@@ -477,10 +676,10 @@ class _ActivityListPageState extends State<ActivityListPage> {
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: event.isFull
-                            ? Colors.red
-                            : event.isPast
-                                ? Colors.grey
+                        color: event.isPast
+                            ? Colors.grey
+                            : event.isFull
+                                ? Colors.red
                                 : Colors.green,
                         borderRadius: BorderRadius.circular(20),
                       ),
@@ -494,6 +693,37 @@ class _ActivityListPageState extends State<ActivityListPage> {
                       ),
                     ),
                   ),
+                  
+                  // Distance Badge
+                  if (distanceText.isNotEmpty)
+                    Positioned(
+                      top: 12,
+                      left: 12,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.blue[600],
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.location_on, color: Colors.white, size: 12),
+                            const SizedBox(width: 4),
+                            Text(
+                              distanceText,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -622,7 +852,6 @@ class _ActivityListPageState extends State<ActivityListPage> {
       );
     }
 
-    // If looks like remote URL, use network
     if (url.startsWith('http') || url.startsWith('https')) {
       return Image.network(
         url,
@@ -637,7 +866,6 @@ class _ActivityListPageState extends State<ActivityListPage> {
       );
     }
 
-    // Treat as local file path
     try {
       final file = File(url);
       if (file.existsSync()) {
