@@ -3,7 +3,12 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:async';
 
+// PERBAIKAN: Pastikan email kontak Anda valid.
+const String NOMINATIM_USER_AGENT = 'VSF-App/1.0 (contact:naimatululumiyah89@example.com)';
+
+// --- DATA KOORDINAT PROVINSI DAN KOTA (Tidak Diubah) ---
 final Map<String, LatLng> PROVINCE_CENTER = {
   'DKI Jakarta': LatLng(-6.2088, 106.8456),
   'Jawa Barat': LatLng(-6.9175, 107.6019),
@@ -47,6 +52,7 @@ final Map<String, LatLng> CITY_COORDINATES = {
   'Semarang': LatLng(-6.9932, 110.4203),
   'Jakarta Pusat': LatLng(-6.1944, 106.8294),
 };
+// -------------------------------------------------------------------
 
 class LocationPicker extends StatefulWidget {
   final LatLng? initialLocation;
@@ -75,6 +81,8 @@ class _LocationPickerState extends State<LocationPicker> {
   List<Map<String, dynamic>> _searchResults = [];
   bool _isSearching = false;
   
+  Timer? _debounceTimer;
+  
   static const String MAPBOX_ACCESS_TOKEN = 'REDACTED_MAPBOX_TOKEN';
 
   @override
@@ -92,6 +100,14 @@ class _LocationPickerState extends State<LocationPicker> {
         _moveToProvince(widget.selectedProvince!);
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    _mapController.dispose();
+    _searchController.dispose();
+    super.dispose();
   }
 
   @override
@@ -135,11 +151,11 @@ class _LocationPickerState extends State<LocationPicker> {
     final center = PROVINCE_CENTER[province];
     if (center == null) return null;
     
-    // Radius yang lebih besar untuk coverage
-    final south = center.latitude - 1.0;
-    final west = center.longitude - 1.0;
-    final north = center.latitude + 1.0;
-    final east = center.longitude + 1.0;
+    // Memberi batas 3 derajat di sekitar pusat provinsi
+    final south = center.latitude - 1.5;
+    final west = center.longitude - 1.5;
+    final north = center.latitude + 1.5;
+    final east = center.longitude + 1.5;
     
     return '$west,$south,$east,$north';
   }
@@ -162,20 +178,41 @@ class _LocationPickerState extends State<LocationPicker> {
     }
   }
 
+  void _onSearchChanged(String query) {
+    _debounceTimer?.cancel();
+    
+    if (query.trim().isEmpty) {
+      setState(() {
+        _searchResults = [];
+        _isSearching = false;
+      });
+      return;
+    }
+    
+    _debounceTimer = Timer(const Duration(milliseconds: 800), () {
+      _searchLocation(query);
+    });
+    
+    // Show loading indicator
+    setState(() => _isSearching = true);
+  }
+
   Future<void> _searchLocation(String query) async {
     if (query.trim().isEmpty) {
-      setState(() => _searchResults = []);
+      setState(() {
+        _searchResults = [];
+        _isSearching = false;
+      });
       return;
     }
 
-    setState(() => _isSearching = true);
+    print('🔍 Searching: "$query"');
     
     try {
-      final encodedQuery = Uri.encodeComponent(query.trim());
-      
-      // Build search query dengan province untuk lebih akurat
+      // Build search query dengan province
       String searchQuery = query.trim();
       if (widget.selectedProvince != null) {
+        // Query disetel menjadi "kata kunci, Nama Provinsi, Indonesia"
         searchQuery = '$query, ${widget.selectedProvince}, Indonesia';
       } else {
         searchQuery = '$query, Indonesia';
@@ -183,87 +220,88 @@ class _LocationPickerState extends State<LocationPicker> {
       final encodedSearch = Uri.encodeComponent(searchQuery);
       
       final String? bbox = _getBboxForProvince(widget.selectedProvince);
-      
-      print('🔍 Searching: "$query"');
-      print('   Full query: "$searchQuery"');
       if (bbox != null) print('   Bbox: $bbox');
 
       final List<Map<String, dynamic>> results = [];
       
-      // OpenStreetMap Nominatim (FREE & UNLIMITED)
+      // OpenStreetMap Nominatim API
       final String nominatimUrl =
           'https://nominatim.openstreetmap.org/search'
           '?q=$encodedSearch'
-          '&format=json'
-          '&limit=20'
+          '&format=jsonv2' // ✅ PERBAIKAN: Menggunakan format modern
+          '&limit=15'
           '&countrycodes=id'
           '&addressdetails=1'
           '&extratags=1';
 
-      print('   Fetching from OpenStreetMap Nominatim...');
+      print('   Fetching from OSM Nominatim: $nominatimUrl');
 
       final response = await http.get(
         Uri.parse(nominatimUrl),
         headers: {
-          'User-Agent': 'VSF-App/1.0 (+http://vsf.local)',
+          'User-Agent': NOMINATIM_USER_AGENT, // ✅ PERBAIKAN: Menggunakan User-Agent lengkap
+          'Accept-Language': 'id,en',
         },
       ).timeout(
-        const Duration(seconds: 15),
+        const Duration(seconds: 15), // ✅ PERBAIKAN: Timeout diperpanjang
         onTimeout: () {
-          print('   ⏱️ TIMEOUT after 15 seconds');
+          print('   ⏱️ TIMEOUT after 15 seconds (Status 408)');
+          // Mengembalikan respons 408 saat timeout
           return http.Response('[]', 408);
         },
       );
       
-      print('   Response status: ${response.statusCode}');
-      print('   Response length: ${response.body.length} bytes');
+      print('   Response: ${response.statusCode}');
 
-      if (response.statusCode == 200) {
-        try {
-          final List<dynamic> features = jsonDecode(response.body);
-          
-          print('   📍 Nominatim returned ${features.length} results');
-          
-          for (var feature in features) {
-            try {
-              final lat = double.parse(feature['lat'] as String);
-              final lng = double.parse(feature['lon'] as String);
-              final name = feature['display_name'] ?? feature['name'] ?? 'Unknown';
-              final type = feature['type'] ?? 'place';
-              final importance = double.parse(
-                feature['importance']?.toString() ?? '0.5'
-              );
-              
-              // Validasi dalam bbox jika ada
-              final isInBbox = _isPointInBbox(lat, lng, bbox);
-              
-              if (isInBbox) {
-                print('   ✓ ${name.substring(0, 50)}... (type: $type)');
-                
-                results.add({
-                  'name': name,
-                  'lat': lat,
-                  'lng': lng,
-                  'type': type,
-                  'relevance': importance,
-                });
-              } else {
-                print('   ✗ ${name.substring(0, 40)}... (outside area)');
-              }
-            } catch (e) {
-              print('   ⚠️ Parse error: $e');
-            }
-          }
-        } catch (e) {
-          print('   ⚠️ JSON decode error: $e');
-          print('   Response: ${response.body.substring(0, 200)}');
-        }
-      } else {
+      // 🛑 PERBAIKAN KRUSIAL: Tangani Status Code non-200
+      if (response.statusCode != 200) {
         print('   ❌ API Error: ${response.statusCode}');
-        print('   Response: ${response.body.substring(0, 200)}');
+        if (mounted) {
+            setState(() {
+                _searchResults = [];
+                _isSearching = false;
+            });
+        }
+        return; // Hentikan fungsi jika status bukan 200 (termasuk 408)
+      }
+
+      // Jika status 200, proses JSON
+      try {
+        final List<dynamic> features = jsonDecode(response.body);
+        
+        print('   📍 Found ${features.length} results');
+        
+        for (var feature in features) {
+          try {
+            final lat = double.parse(feature['lat'] as String);
+            final lng = double.parse(feature['lon'] as String);
+            final name = feature['display_name'] ?? 'Unknown';
+            final type = feature['type'] ?? 'place';
+            final importance = double.parse(
+              feature['importance']?.toString() ?? '0.5'
+            );
+            
+            // Opsi: Jika Anda ingin lebih banyak hasil, hapus pengecekan BBox manual ini
+            final isInBbox = _isPointInBbox(lat, lng, bbox);
+            
+            if (isInBbox) {
+              results.add({
+                'name': name,
+                'lat': lat,
+                'lng': lng,
+                'type': type,
+                'relevance': importance,
+              });
+            }
+          } catch (e) {
+            print('   ⚠️ Parse error for feature: $e');
+          }
+        }
+      } catch (e) {
+        print('   ⚠️ JSON decode error: $e. Response body length: ${response.body.length}');
       }
       
-      // Remove duplicates
+      // Remove duplicates & sort
       final Map<String, Map<String, dynamic>> uniqueResults = {};
       for (var result in results) {
         final key = '${(result['lat'] as double).toStringAsFixed(4)}-${(result['lng'] as double).toStringAsFixed(4)}';
@@ -277,21 +315,30 @@ class _LocationPickerState extends State<LocationPicker> {
         (b['relevance'] as double).compareTo(a['relevance'] as double)
       );
       
-      setState(() => _searchResults = finalResults);
-      print('✅ Ditemukan ${finalResults.length} hasil unik');
+      if (mounted) {
+        setState(() {
+          _searchResults = finalResults.take(10).toList(); // Max 10 results
+          _isSearching = false;
+        });
+      }
       
-      if (finalResults.isEmpty) {
+      print('✅ Menampilkan ${_searchResults.length} hasil');
+      
+      if (_searchResults.isEmpty) {
         print('💡 Tips: Coba ketik lebih spesifik atau klik langsung di map');
       }
       
     } catch (e) {
       print('❌ Exception: $e');
-      setState(() => _searchResults = []);
+      if (mounted) {
+        setState(() {
+          _searchResults = [];
+          _isSearching = false;
+        });
+      }
     }
-    
-    setState(() => _isSearching = false);
   }
-
+  // --- Fungsi Lainnya (Tidak Diubah) ---
   void _handleMapTap(LatLng location) {
     setState(() {
       _selectedLocation = location;
@@ -311,6 +358,7 @@ class _LocationPickerState extends State<LocationPicker> {
       _searchController.clear();
     });
     widget.onLocationPicked(location);
+    FocusScope.of(context).unfocus();
   }
 
   IconData _getIconForType(String type) {
@@ -332,10 +380,8 @@ class _LocationPickerState extends State<LocationPicker> {
       case 'town':
       case 'village':
         return Icons.location_city;
-      case 'place':
-        return Icons.map;
       default:
-        return Icons.location_on;
+        return Icons.place;
     }
   }
 
@@ -358,10 +404,8 @@ class _LocationPickerState extends State<LocationPicker> {
       case 'town':
       case 'village':
         return 'Kota/Daerah';
-      case 'place':
-        return 'Lokasi';
       default:
-        return 'Tempat';
+        return 'Lokasi';
     }
   }
 
@@ -382,7 +426,6 @@ class _LocationPickerState extends State<LocationPicker> {
                 BoxShadow(
                   color: Colors.black.withOpacity(0.3),
                   blurRadius: 8,
-                  offset: const Offset(0, 2),
                 ),
               ],
             ),
@@ -410,7 +453,6 @@ class _LocationPickerState extends State<LocationPicker> {
               mapController: _mapController,
               options: MapOptions(
                 initialCenter: widget.initialLocation ?? 
-                  CITY_COORDINATES['Jakarta Pusat'] ??
                   const LatLng(-6.1944, 106.8294),
                 initialZoom: 11,
                 onTap: (tapPosition, point) => _handleMapTap(point),
@@ -444,11 +486,10 @@ class _LocationPickerState extends State<LocationPicker> {
                     ),
                     child: TextField(
                       controller: _searchController,
-                      onChanged: (value) {
-                        _searchLocation(value);
-                      },
+                      onChanged: _onSearchChanged,
                       decoration: InputDecoration(
-                        hintText: 'Cari: Pantai Ancol, RS, Kantor...',
+                        hintText: 'Cari: Pantai Ancol, RS Siloam, dll...',
+                        hintStyle: TextStyle(color: Colors.grey[500], fontSize: 13),
                         prefixIcon: const Icon(Icons.search, color: Colors.blue),
                         suffixIcon: _isSearching
                             ? const Padding(
@@ -464,10 +505,14 @@ class _LocationPickerState extends State<LocationPicker> {
                               )
                             : (_searchController.text.isNotEmpty
                                 ? IconButton(
-                                    icon: const Icon(Icons.clear),
+                                    icon: const Icon(Icons.clear, size: 20),
                                     onPressed: () {
                                       _searchController.clear();
-                                      setState(() => _searchResults = []);
+                                      _debounceTimer?.cancel();
+                                      setState(() {
+                                        _searchResults = [];
+                                        _isSearching = false;
+                                      });
                                     },
                                   )
                                 : null),
@@ -481,7 +526,37 @@ class _LocationPickerState extends State<LocationPicker> {
                   ),
                   
                   // Search Results
-                  if (_searchResults.isNotEmpty)
+                  if (_isSearching && _searchResults.isEmpty)
+                    Container(
+                      margin: const EdgeInsets.only(top: 4),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 8,
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            'Mencari lokasi...',
+                            style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                          ),
+                        ],
+                      ),
+                    ),
+                  
+                  if (_searchResults.isNotEmpty && !_isSearching)
                     Container(
                       margin: const EdgeInsets.only(top: 4),
                       decoration: BoxDecoration(
@@ -501,8 +576,6 @@ class _LocationPickerState extends State<LocationPicker> {
                         separatorBuilder: (context, index) => const Divider(height: 1),
                         itemBuilder: (context, index) {
                           final result = _searchResults[index];
-                          final lat = (result['lat'] as double).toStringAsFixed(4);
-                          final lng = (result['lng'] as double).toStringAsFixed(4);
                           final type = result['type'] ?? 'place';
                           final name = result['name'] ?? 'Unknown';
                           
@@ -517,8 +590,8 @@ class _LocationPickerState extends State<LocationPicker> {
                               ),
                             ),
                             subtitle: Text(
-                              '$lat, $lng • ${_getTypeLabel(type)}',
-                              style: const TextStyle(fontSize: 10, color: Colors.grey),
+                              _getTypeLabel(type),
+                              style: const TextStyle(fontSize: 11, color: Colors.grey),
                             ),
                             leading: Icon(
                               _getIconForType(type),
@@ -536,7 +609,6 @@ class _LocationPickerState extends State<LocationPicker> {
                                 result['lng'],
                                 result['name'],
                               );
-                              FocusScope.of(context).unfocus();
                             },
                           );
                         },
@@ -580,12 +652,5 @@ class _LocationPickerState extends State<LocationPicker> {
         ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _mapController.dispose();
-    _searchController.dispose();
-    super.dispose();
   }
 }

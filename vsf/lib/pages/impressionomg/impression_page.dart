@@ -155,7 +155,41 @@ class _ImpressionPageState extends State<ImpressionPage> {
                         children: [
                           Expanded(
                             child: Text(
-                              'lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
+                              'Terimakasih Kepada Bapak Bagus, mungkin untuk kesan dan pesan saya ucapkan terimakasih banyak atas ilmu yang telah diberikan selama perkuliahan berlangsung, Saya jadi belajar banyak tentang hal baru terutama mobile, meskipun sambil ga tidur dikit (lebih ke karena sertifikasi hanya semunggi untuk menambah nilai) krn tidak yakin dengan nilai projek saya dan UTS.',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.blue[900],
+                                height: 2,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    const Text(
+                      'Pesan',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.blue[100]!),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Penambahan fitur untuk angkatan selanjutnya pak hehe, dan penambahan nilai saya.',
                               style: TextStyle(
                                 fontSize: 16,
                                 color: Colors.blue[900],

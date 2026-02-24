@@ -1,6 +1,4 @@
-// =====================================================
-// PROFILE PAGE REDESIGN (vsf/lib/pages/profile/profile_page.dart)
-// =====================================================
+
 
 import 'package:flutter/material.dart';
 import 'dart:io';

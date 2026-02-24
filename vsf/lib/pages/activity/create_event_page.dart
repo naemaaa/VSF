@@ -10,63 +10,7 @@ import '../../models/event_location.dart';
 import '../../models/user_model.dart';
 import '../../services/location_service.dart';
 import '../../services/event_service.dart'; 
-
-// ✅ FIX: Timezone handling yang lebih robust
-class TimezoneHelper {
-  static const String APP_TIMEZONE_NAME = 'WIB'; // App menggunakan WIB sebagai standar
-  static const int WIB_OFFSET_HOURS = 7; // UTC+7
-
-  /// Ambil timezone offset device saat ini dalam jam
-  static int getDeviceTimezoneOffsetHours() {
-    return DateTime.now().timeZoneOffset.inHours;
-  }
-
-  /// Konversi dari local input (dianggap WIB) ke UTC untuk disimpan
-  /// 
-  /// Skenario:
-  /// - User input: 09:00 (WIB/UTC+7)
-  /// - Device di WIB: offset = 7 → result = 09:00 - 7 = 02:00 UTC ✓
-  /// - Device di GMT: offset = 0 → result = 09:00 - (0 - 7) = 16:00 UTC ✓
-  static DateTime localWIBToUTC(DateTime localWIBTime) {
-    final deviceOffset = getDeviceTimezoneOffsetHours();
-    final offsetDifference = deviceOffset - WIB_OFFSET_HOURS;
-    
-    // Adjust untuk perbedaan timezone device
-    final adjusted = localWIBTime.subtract(Duration(hours: offsetDifference));
-    final utc = adjusted.toUtc();
-    
-    print('🕐 Local to UTC Conversion:');
-    print('   Input (WIB): $localWIBTime');
-    print('   Device offset: UTC+$deviceOffset');
-    print('   WIB offset: UTC+$WIB_OFFSET_HOURS');
-    print('   Adjusted: $adjusted');
-    print('   Output (UTC): $utc');
-    
-    return utc;
-  }
-
-  /// Konversi dari UTC (database) ke local display (WIB)
-  /// 
-  /// Skenario:
-  /// - Database: 02:00 UTC
-  /// - Device di WIB: offset = 7 → result = 02:00 + (7 - 0) = 09:00 WIB ✓
-  /// - Device di GMT: offset = 0 → result = 02:00 + (7 - 0) = 09:00 WIB ✓
-  static DateTime utcToLocalWIB(DateTime utcTime) {
-    final deviceOffset = getDeviceTimezoneOffsetHours();
-    final offsetDifference = WIB_OFFSET_HOURS - deviceOffset;
-    
-    final local = utcTime.add(Duration(hours: offsetDifference));
-    
-    print('🕐 UTC to Local Conversion:');
-    print('   Input (UTC): $utcTime');
-    print('   Device offset: UTC+$deviceOffset');
-    print('   WIB offset: UTC+$WIB_OFFSET_HOURS');
-    print('   Output (WIB): $local');
-    
-    return local;
-  }
-}
-
+import '../../services/timezone_service.dart'; 
 class CreateEventPage extends StatefulWidget {
   final UserModel currentUser;
   final EventModel? existingEvent;
@@ -98,8 +42,8 @@ class _CreateEventPageState extends State<CreateEventPage> {
   String? _selectedCountry;
   String? _selectedProvince;
   String? _selectedCity;
-  DateTime? _startDateTime; // ✅ Simpan sebagai local WIB
-  DateTime? _endDateTime;   // ✅ Simpan sebagai local WIB
+  DateTime? _startDateTime; // Simpan sebagai local WIB
+  DateTime? _endDateTime;   // Simpan sebagai local WIB
   File? _pickedImage;
   
   bool _isSubmitting = false;
@@ -140,13 +84,13 @@ class _CreateEventPageState extends State<CreateEventPage> {
       _districtController.text = e.location.district;
       _villageController.text = e.location.village;
       
-      // ✅ FIX: Convert UTC database ke local WIB untuk edit
-      _startDateTime = TimezoneHelper.utcToLocalWIB(e.eventStartTime);
-      _endDateTime = TimezoneHelper.utcToLocalWIB(e.eventEndTime);
+      // ✅ FIX: Gunakan TimezoneHelper yang baru (mengambil UTC, menampilkan WIB)
+      _startDateTime = TimezoneHelper.convertUTCToTimezone(e.eventStartTime, 'WIB');
+      _endDateTime = TimezoneHelper.convertUTCToTimezone(e.eventEndTime, 'WIB');
       
       print('📝 Edit Event Loaded:');
       print('   UTC Start: ${e.eventStartTime}');
-      print('   Local Display: $_startDateTime');
+      print('   Local Display (WIB): $_startDateTime');
       
       _targetVolunteerController.text = e.targetVolunteerCount.toString();
       _feeController.text = e.participationFeeIdr == 0 ? '' : e.participationFeeIdr.toString();
@@ -215,9 +159,14 @@ class _CreateEventPageState extends State<CreateEventPage> {
 
   Future<void> _pickDateTime({required bool isStart}) async {
     final now = DateTime.now();
+    
+    // Gunakan waktu yang sudah dipilih sebagai initialDate, atau DateTime.now()
+    final initialDate = (isStart ? _startDateTime : _endDateTime) ?? now;
+    final initialTime = TimeOfDay.fromDateTime(initialDate);
+    
     final date = await showDatePicker(
       context: context,
-      initialDate: now,
+      initialDate: initialDate,
       firstDate: now,
       lastDate: DateTime(now.year + 2),
     );
@@ -225,12 +174,12 @@ class _CreateEventPageState extends State<CreateEventPage> {
     
     final time = await showTimePicker(
       context: context,
-      initialTime: TimeOfDay.now(),
+      initialTime: initialTime,
     );
     if (time == null) return;
     
-    // ✅ FIX: DateTime dari DatePicker/TimePicker adalah local time
-    // Simpan sebagai local WIB untuk konsistensi
+    // DateTime dari DatePicker/TimePicker adalah local time.
+    // Kita simpan sebagai local (naive) time, yang kemudian diinterpretasikan sebagai WIB saat submit.
     final dt = DateTime(date.year, date.month, date.day, time.hour, time.minute);
     
     print('🕐 Date/Time Picker Result:');
@@ -263,6 +212,14 @@ class _CreateEventPageState extends State<CreateEventPage> {
       return;
     }
 
+    // Validasi Waktu: Start harus sebelum End
+    if (_startDateTime!.isAfter(_endDateTime!)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Waktu mulai harus sebelum waktu selesai.')),
+      );
+      return;
+    }
+
     setState(() => _isSubmitting = true);
 
     try {
@@ -280,7 +237,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
         longitude: _selectedLocation!.longitude,
       );
 
-      // ✅ FIX: Convert local WIB ke UTC untuk database
+      // ✅ FIX KRUSIAL: Convert local WIB ke UTC menggunakan helper yang diperbaiki
       final eventStartTimeUTC = TimezoneHelper.localWIBToUTC(_startDateTime!);
       final eventEndTimeUTC = TimezoneHelper.localWIBToUTC(_endDateTime!);
 
@@ -294,8 +251,8 @@ class _CreateEventPageState extends State<CreateEventPage> {
                        widget.currentUser.organizationName ?? '-',
         organizerImageUrl: widget.currentUser.profileImagePath,
         location: location,
-        eventStartTime: eventStartTimeUTC,  // ✅ UTC
-        eventEndTime: eventEndTimeUTC,      // ✅ UTC
+        eventStartTime: eventStartTimeUTC,  // ✅ Disimpan dalam UTC
+        eventEndTime: eventEndTimeUTC,      // ✅ Disimpan dalam UTC
         targetVolunteerCount: int.tryParse(_targetVolunteerController.text) ?? 0,
         currentVolunteerCount: widget.existingEvent?.currentVolunteerCount ?? 0,
         participationFeeIdr: int.tryParse(_feeController.text) ?? 0,
@@ -320,9 +277,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
         if (resultEvent != null) {
           print('✅ Event saved successfully');
           print('   Start (UTC): ${resultEvent.eventStartTime}');
-          print('   Start (Display): ${TimezoneHelper.utcToLocalWIB(resultEvent.eventStartTime)}');
-          print('   End (UTC): ${resultEvent.eventEndTime}');
-          print('   End (Display): ${TimezoneHelper.utcToLocalWIB(resultEvent.eventEndTime)}');
+          print('   Start (Display WIB): ${TimezoneHelper.convertUTCToTimezone(resultEvent.eventStartTime, 'WIB')}');
           
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -523,7 +478,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
                 ),
                 const SizedBox(height: 16),
                 
-                // ✅ IMPROVED: Timezone info display
+                // Timezone info display
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -537,7 +492,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Waktu akan disimpan dalam UTC (Koordinat Waktu Universal) untuk konsistensi di seluruh timezone',
+                          'Waktu di-input dan disimpan dalam WIB/UTC+7, dikonversi ke UTC untuk database.',
                           style: TextStyle(fontSize: 12, color: Colors.blue[700]),
                         ),
                       ),
@@ -553,7 +508,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
                   child: InputDecorator(
                     decoration: const InputDecoration(border: OutlineInputBorder()),
                     child: Text(_startDateTime == null
-                        ? 'Pilih tanggal & waktu mulai'
+                        ? 'Pilih tanggal & waktu mulai (WIB)'
                         : '${_startDateTime!}'.split('.').first.replaceAll('T', ' ')),
                   ),
                 ),
@@ -566,7 +521,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
                   child: InputDecorator(
                     decoration: const InputDecoration(border: OutlineInputBorder()),
                     child: Text(_endDateTime == null
-                        ? 'Pilih tanggal & waktu selesai'
+                        ? 'Pilih tanggal & waktu selesai (WIB)'
                         : '${_endDateTime!}'.split('.').first.replaceAll('T', ' ')),
                   ),
                 ),

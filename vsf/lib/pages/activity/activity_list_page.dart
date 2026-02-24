@@ -422,8 +422,7 @@ class _ActivityListPageState extends State<ActivityListPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
+        appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text(
@@ -442,7 +441,6 @@ class _ActivityListPageState extends State<ActivityListPage> {
       ),
       body: Column(
         children: [
-          // Search Bar & Filter
           Container(
             color: Colors.white,
             padding: const EdgeInsets.all(16),
@@ -459,7 +457,7 @@ class _ActivityListPageState extends State<ActivityListPage> {
                         borderSide: BorderSide.none,
                       ),
                       filled: true,
-                      fillColor: Colors.grey[100],
+                      fillColor: Colors.grey[20],
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 16,
                         vertical: 12,

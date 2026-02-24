@@ -1,7 +1,6 @@
-// pages/login_page.dart
 import 'package:flutter/material.dart';
 import '../../services/session_service.dart';
-import '../../services/auth_service.dart'; // Diperbaiki, ganti auth_service
+import '../../services/auth_service.dart'; 
 import '../main_screen.dart';
 import 'register_individual_page.dart';
 import 'register_organization_page.dart';
@@ -30,7 +29,6 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  // HAPUS FUNGSI _hashPassword LOKAL!
 
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
